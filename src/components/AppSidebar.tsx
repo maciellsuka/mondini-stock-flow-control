@@ -9,8 +9,7 @@ import {
   Settings,
   BarChart3,
   Home,
-  ShoppingCart,
-  Wrench
+  ShoppingCart
 } from "lucide-react";
 
 import {
@@ -51,11 +50,6 @@ const navigation = [
     title: "Pedidos",
     url: "/pedidos",
     icon: FileText,
-  },
-  {
-    title: "Serviços",
-    url: "/servicos",
-    icon: Wrench,
   },
   {
     title: "Relatórios",
