@@ -1,6 +1,6 @@
 
 import { useState } from "react";
-import { Plus, Search, Edit, Trash2, FileText, Calendar, User, Package } from "lucide-react";
+import { Plus, Search, Edit, Trash2, FileText, Calendar, User, Package, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { generatePedidoPDF } from "@/utils/pdfGenerator";
 
 interface ItemPedido {
   id: number;
@@ -120,7 +121,7 @@ export default function Pedidos() {
   const [formData, setFormData] = useState({
     clienteId: "",
     dataEntrega: "",
-    status: "pendente" as const,
+    status: "pendente" as "pendente" | "processando" | "concluido" | "cancelado",
     observacoes: ""
   });
   const [itens, setItens] = useState<ItemPedido[]>([]);
@@ -138,7 +139,7 @@ export default function Pedidos() {
     setFormData({
       clienteId: "",
       dataEntrega: "",
-      status: "pendente",
+      status: "pendente" as "pendente" | "processando" | "concluido" | "cancelado",
       observacoes: ""
     });
     setItens([]);
@@ -243,6 +244,10 @@ export default function Pedidos() {
     setPedidos(prev => prev.filter(pedido => pedido.id !== id));
   };
 
+  const handleGeneratePDF = (pedido: Pedido) => {
+    generatePedidoPDF(pedido);
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case "pendente": return "bg-yellow-100 text-yellow-800";
@@ -316,7 +321,7 @@ export default function Pedidos() {
                   <Label htmlFor="status">Status</Label>
                   <Select
                     value={formData.status}
-                    onValueChange={(value: any) => setFormData({ ...formData, status: value })}
+                    onValueChange={(value: "pendente" | "processando" | "concluido" | "cancelado") => setFormData({ ...formData, status: value })}
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -506,6 +511,14 @@ export default function Pedidos() {
                   <TableCell>R$ {pedido.total.toFixed(2)}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleGeneratePDF(pedido)}
+                        title="Gerar PDF"
+                      >
+                        <Download className="w-4 h-4" />
+                      </Button>
                       <Button
                         variant="outline"
                         size="sm"
