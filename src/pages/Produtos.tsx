@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Search, Edit, Trash2, Package, AlertTriangle } from "lucide-react";
+import { Plus, Search, Edit, Trash2, Package, AlertTriangle, Scale } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface Produto {
@@ -36,6 +36,10 @@ interface Produto {
   unidade: string;
   status: "Ativo" | "Inativo";
   dataCadastro: string;
+  // Campos específicos para Material Moído
+  pesoSaco?: number; // em KG
+  tipoMaterial?: string;
+  quantidadeSacos?: number;
 }
 
 export default function Produtos() {
@@ -46,7 +50,7 @@ export default function Produtos() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
 
-  // Dados mockados
+  // Dados mockados com exemplos de material moído
   const [produtos, setProdutos] = useState<Produto[]>([
     {
       id: "PROD-001",
@@ -61,16 +65,34 @@ export default function Produtos() {
       dataCadastro: "2024-01-01"
     },
     {
-      id: "PROD-002",
-      nome: "Material Moído Tipo A",
+      id: "MAT-001",
+      nome: "Material Moído Premium",
       categoria: "Material Moído",
-      descricao: "Material processado para produção",
+      descricao: "Material processado de alta qualidade",
       preco: 12.50,
-      estoqueAtual: 15,
-      estoqueMinimo: 50,
+      estoqueAtual: 240,
+      estoqueMinimo: 100,
       unidade: "KG",
       status: "Ativo",
-      dataCadastro: "2024-01-02"
+      dataCadastro: "2024-01-02",
+      pesoSaco: 25,
+      tipoMaterial: "Premium Grade A",
+      quantidadeSacos: 10
+    },
+    {
+      id: "MAT-002",
+      nome: "Material Moído Standard",
+      categoria: "Material Moído",
+      descricao: "Material processado padrão",
+      preco: 8.75,
+      estoqueAtual: 150,
+      estoqueMinimo: 80,
+      unidade: "KG",
+      status: "Ativo",
+      dataCadastro: "2024-01-03",
+      pesoSaco: 20,
+      tipoMaterial: "Standard Grade B",
+      quantidadeSacos: 8
     },
     {
       id: "PROD-003",
@@ -83,18 +105,6 @@ export default function Produtos() {
       unidade: "LT",
       status: "Ativo",
       dataCadastro: "2024-01-03"
-    },
-    {
-      id: "PROD-004",
-      nome: "Produto Final Beta",
-      categoria: "Produto Final",
-      descricao: "Produto finalizado linha premium",
-      preco: 89.90,
-      estoqueAtual: 75,
-      estoqueMinimo: 30,
-      unidade: "UN",
-      status: "Ativo",
-      dataCadastro: "2024-01-04"
     }
   ]);
 
@@ -110,7 +120,7 @@ export default function Produtos() {
   const getCategoryColor = (categoria: string) => {
     switch (categoria) {
       case "Produto Final": return "bg-green-100 text-green-800";
-      case "Material Moído": return "bg-blue-100 text-blue-800";
+      case "Material Moído": return "bg-orange-100 text-orange-800";
       case "MCOLOR": return "bg-purple-100 text-purple-800";
       default: return "bg-gray-100 text-gray-800";
     }
@@ -157,7 +167,7 @@ export default function Produtos() {
               Novo Produto
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-w-3xl">
             <DialogHeader>
               <DialogTitle>
                 {isEditing ? "Editar Produto" : "Novo Produto"}
@@ -166,7 +176,7 @@ export default function Produtos() {
                 {isEditing ? "Edite as informações do produto" : "Cadastre um novo produto no sistema"}
               </DialogDescription>
             </DialogHeader>
-            <div className="grid gap-4 py-4">
+            <div className="grid gap-4 py-4 max-h-96 overflow-y-auto">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="nome">Nome do Produto *</Label>
@@ -186,10 +196,12 @@ export default function Produtos() {
                   </Select>
                 </div>
               </div>
+
               <div className="space-y-2">
                 <Label htmlFor="descricao">Descrição</Label>
                 <Textarea id="descricao" placeholder="Descreva o produto" />
               </div>
+
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="preco">Preço (R$) *</Label>
@@ -214,6 +226,42 @@ export default function Produtos() {
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+
+              {/* Campos específicos para Material Moído */}
+              <div className="border-t pt-4">
+                <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                  <Scale className="h-5 w-5" />
+                  Configurações de Material Moído
+                </h3>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="pesoSaco">Peso por Saco (KG)</Label>
+                    <Input id="pesoSaco" type="number" placeholder="25" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="tipoMaterial">Tipo de Material</Label>
+                    <Select>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione o tipo" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Premium Grade A">Premium Grade A</SelectItem>
+                        <SelectItem value="Standard Grade B">Standard Grade B</SelectItem>
+                        <SelectItem value="Economy Grade C">Economy Grade C</SelectItem>
+                        <SelectItem value="Especial Fino">Especial Fino</SelectItem>
+                        <SelectItem value="Especial Grosso">Especial Grosso</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="quantidadeSacos">Quantidade de Sacos</Label>
+                    <Input id="quantidadeSacos" type="number" placeholder="10" />
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground mt-2">
+                  * Campos específicos para produtos da categoria "Material Moído"
+                </p>
               </div>
             </div>
             <DialogFooter>
@@ -279,6 +327,21 @@ export default function Produtos() {
                         <Package className="h-4 w-4" />
                         Código: {produto.id}
                       </div>
+                      
+                      {/* Informações específicas para Material Moído */}
+                      {produto.categoria === "Material Moído" && produto.pesoSaco && (
+                        <div className="space-y-1 p-3 bg-orange-50 rounded-lg border">
+                          <div className="flex items-center gap-2 font-medium text-orange-800">
+                            <Scale className="h-4 w-4" />
+                            Informações do Material Moído
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div>Peso por saco: <strong>{produto.pesoSaco} KG</strong></div>
+                            <div>Quantidade: <strong>{produto.quantidadeSacos} sacos</strong></div>
+                            <div className="col-span-2">Tipo: <strong>{produto.tipoMaterial}</strong></div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                     
                     <div className="space-y-2">
@@ -291,6 +354,11 @@ export default function Produtos() {
                         <br />
                         Mínimo: {produto.estoqueMinimo} {produto.unidade}
                       </div>
+                      {produto.categoria === "Material Moído" && produto.pesoSaco && (
+                        <div className="text-sm text-orange-700">
+                          Total em sacos: <strong>{Math.floor(produto.estoqueAtual / produto.pesoSaco)} sacos</strong>
+                        </div>
+                      )}
                       <div className="text-xs">
                         Cadastrado em: {produto.dataCadastro}
                       </div>

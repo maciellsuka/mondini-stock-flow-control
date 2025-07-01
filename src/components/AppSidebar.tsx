@@ -65,7 +65,7 @@ const navigation = [
 ];
 
 export function AppSidebar() {
-  const { collapsed } = useSidebar();
+  const { state } = useSidebar();
   const location = useLocation();
   const currentPath = location.pathname;
 
@@ -82,14 +82,14 @@ export function AppSidebar() {
       : "hover:bg-accent hover:text-accent-foreground";
 
   return (
-    <Sidebar className={collapsed ? "w-14" : "w-64"} collapsible>
+    <Sidebar collapsible="icon">
       <SidebarContent>
         <div className="p-4 border-b">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
               <Building2 className="w-5 h-5 text-primary-foreground" />
             </div>
-            {!collapsed && (
+            {state !== "collapsed" && (
               <div>
                 <h2 className="font-bold text-lg text-primary">MONDINI</h2>
                 <p className="text-xs text-muted-foreground">Sistema de Controle</p>
@@ -111,7 +111,7 @@ export function AppSidebar() {
                       className={({ isActive }) => getNavCls({ isActive })}
                     >
                       <item.icon className="w-4 h-4" />
-                      {!collapsed && <span>{item.title}</span>}
+                      {state !== "collapsed" && <span>{item.title}</span>}
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
