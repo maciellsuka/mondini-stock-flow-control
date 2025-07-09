@@ -1,15 +1,12 @@
 import LogoMondini from "../assets/Logo-Mondini.png";
-import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
-  Building2,
   Package,
   FileText,
   Users,
-  Settings,
   BarChart3,
   Home,
-  ShoppingCart
+  ShoppingCart,
 } from "lucide-react";
 
 import {
@@ -21,7 +18,6 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
 
@@ -45,6 +41,7 @@ const navigation = [
     title: "Estoque",
     url: "/estoque",
     icon: ShoppingCart,
+    disabled: true,
   },
   {
     title: "Pedidos",
@@ -55,6 +52,7 @@ const navigation = [
     title: "Relatórios",
     url: "/relatorios",
     icon: BarChart3,
+    disabled: true,
   },
 ];
 
@@ -71,8 +69,8 @@ export function AppSidebar() {
   };
 
   const getNavCls = ({ isActive }: { isActive: boolean }) =>
-    isActive 
-      ? "bg-primary text-primary-foreground font-medium hover:bg-primary/90" 
+    isActive
+      ? "bg-primary text-primary-foreground font-medium hover:bg-primary/90"
       : "hover:bg-accent hover:text-accent-foreground";
 
   return (
@@ -80,13 +78,14 @@ export function AppSidebar() {
       <SidebarContent>
         <div className="p-4 border-b">
           <div className="flex items-center gap-3">
-            </div>
-            {state !== "collapsed" && (
-              <div>
-                <img src={LogoMondini} alt="Logo Mondini" />
-              </div>
-            )}
+            {/* Pode adicionar ícone aqui se quiser */}
           </div>
+          {state !== "collapsed" && (
+            <div>
+              <img src={LogoMondini} alt="Logo Mondini" />
+            </div>
+          )}
+        </div>
 
         <SidebarGroup>
           <SidebarGroupLabel>Menu Principal</SidebarGroupLabel>
@@ -94,16 +93,26 @@ export function AppSidebar() {
             <SidebarMenu>
               {navigation.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
-                    <NavLink 
-                      to={item.url} 
-                      end={item.url === "/"}
-                      className={({ isActive }) => getNavCls({ isActive })}
+                  {item.disabled ? (
+                    <div
+                      className="flex items-center gap-3 px-3 py-2 text-muted-foreground cursor-not-allowed opacity-50"
+                      title="Funcionalidade desativada"
                     >
                       <item.icon className="w-4 h-4" />
                       {state !== "collapsed" && <span>{item.title}</span>}
-                    </NavLink>
-                  </SidebarMenuButton>
+                    </div>
+                  ) : (
+                    <SidebarMenuButton asChild>
+                      <NavLink
+                        to={item.url}
+                        end={item.url === "/"}
+                        className={({ isActive }) => getNavCls({ isActive })}
+                      >
+                        <item.icon className="w-4 h-4" />
+                        {state !== "collapsed" && <span>{item.title}</span>}
+                      </NavLink>
+                    </SidebarMenuButton>
+                  )}
                 </SidebarMenuItem>
               ))}
             </SidebarMenu>
