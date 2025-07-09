@@ -132,7 +132,7 @@ export default function Clientes() {
     cliente.cnpj.includes(searchTerm)
   );
 
-  const { isLoading: isSaving } = addOrUpdateClienteMutation;
+  const { isPending: isSaving } = addOrUpdateClienteMutation;
 
   return (
     <div className="p-6 space-y-6">

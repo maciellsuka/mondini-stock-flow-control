@@ -1,406 +1,486 @@
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { db } from "@/lib/firebase";
+import {
+  collection,
+  getDocs,
+  doc,
+  deleteDoc,
+  addDoc,
+  updateDoc,
+  Timestamp,
+} from "firebase/firestore";
+import { Produto as ProdutoModel, Bag } from "@/models/firebaseModels";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { 
+import {
   Dialog,
+  DialogTrigger,
   DialogContent,
-  DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { 
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Plus, Search, Edit, Trash2, Package, AlertTriangle, Scale } from "lucide-react";
+import { Search, Trash2, Edit, Package } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-interface Produto {
-  id: string;
-  nome: string;
-  categoria: "Produto Final" | "Material Moído" | "MCOLOR";
-  descricao: string;
-  preco: number;
-  estoqueAtual: number;
-  estoqueMinimo: number;
-  unidade: string;
-  status: "Ativo" | "Inativo";
-  dataCadastro: string;
-  // Campos específicos para Material Moído
-  pesoSaco?: number; // em KG
-  tipoMaterial?: string;
-  quantidadeSacos?: number;
+interface ProdutoComBags extends ProdutoModel {
+  bags: Bag[];
 }
 
 export default function Produtos() {
   const { toast } = useToast();
+
+  const [produtos, setProdutos] = useState<ProdutoComBags[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const [selectedProduct, setSelectedProduct] = useState<Produto | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
 
-  // Dados mockados com exemplos de material moído
-  const [produtos, setProdutos] = useState<Produto[]>([
-    {
-      id: "PROD-001",
-      nome: "Produto Final Alpha",
-      categoria: "Produto Final",
-      descricao: "Produto finalizado pronto para venda",
-      preco: 45.90,
-      estoqueAtual: 150,
-      estoqueMinimo: 50,
-      unidade: "UN",
-      status: "Ativo",
-      dataCadastro: "2024-01-01"
-    },
-    {
-      id: "MAT-001",
-      nome: "Material Moído Premium",
-      categoria: "Material Moído",
-      descricao: "Material processado de alta qualidade",
-      preco: 12.50,
-      estoqueAtual: 240,
-      estoqueMinimo: 100,
-      unidade: "KG",
-      status: "Ativo",
-      dataCadastro: "2024-01-02",
-      pesoSaco: 25,
-      tipoMaterial: "Premium Grade A",
-      quantidadeSacos: 10
-    },
-    {
-      id: "MAT-002",
-      nome: "Material Moído Standard",
-      categoria: "Material Moído",
-      descricao: "Material processado padrão",
-      preco: 8.75,
-      estoqueAtual: 150,
-      estoqueMinimo: 80,
-      unidade: "KG",
-      status: "Ativo",
-      dataCadastro: "2024-01-03",
-      pesoSaco: 20,
-      tipoMaterial: "Standard Grade B",
-      quantidadeSacos: 8
-    },
-    {
-      id: "PROD-003",
-      nome: "MCOLOR Verde Fluorescente",
-      categoria: "MCOLOR",
-      descricao: "Pigmento verde fluorescente",
-      preco: 78.00,
-      estoqueAtual: 8,
-      estoqueMinimo: 20,
-      unidade: "LT",
-      status: "Ativo",
-      dataCadastro: "2024-01-03"
-    }
-  ]);
-
-  const filteredProdutos = produtos.filter(produto => {
-    const matchesSearch = produto.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         produto.descricao.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = selectedCategory === "all" || produto.categoria === selectedCategory;
-    return matchesSearch && matchesCategory;
+  // Dados para criar novo produto
+  const [novoProduto, setNovoProduto] = useState<Omit<ProdutoModel, "id">>({
+    nomeProd: "",
+    tipo: "moído",
+    precoPorKg: 0,
+    descricao: "",
   });
 
-  const isLowStock = (produto: Produto) => produto.estoqueAtual <= produto.estoqueMinimo;
+  // Edição de produto
+  const [editProduto, setEditProduto] = useState<ProdutoComBags | null>(null);
 
-  const getCategoryColor = (categoria: string) => {
-    switch (categoria) {
-      case "Produto Final": return "bg-green-100 text-green-800";
-      case "Material Moído": return "bg-orange-100 text-orange-800";
-      case "MCOLOR": return "bg-purple-100 text-purple-800";
-      default: return "bg-gray-100 text-gray-800";
+  // Bags em edição (peso, status)
+  const [editingBags, setEditingBags] = useState<Bag[]>([]);
+
+  // Dialog controle - se está em modo edição ou criação
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+
+  // Buscar produtos com suas bags
+  const fetchProdutos = async () => {
+    const produtosSnapshot = await getDocs(collection(db, "produtos"));
+    const produtosData: ProdutoComBags[] = [];
+
+    for (const docSnap of produtosSnapshot.docs) {
+      const produto = docSnap.data() as ProdutoModel;
+      const bagsSnap = await getDocs(collection(db, `produtos/${docSnap.id}/bags`));
+      const bags: Bag[] = bagsSnap.docs.map((b) => ({
+        ...(b.data() as Omit<Bag, "criadoEm">),
+        id: b.id,
+        criadoEm: b.data().criadoEm?.toDate?.() || new Date(),
+        produtoId: b.data().produtoId,
+      }));
+      produtosData.push({ ...produto, id: docSnap.id, bags });
+    }
+
+    setProdutos(produtosData);
+  };
+
+  useEffect(() => {
+    fetchProdutos();
+  }, []);
+
+  // Deletar produto (e suas bags)
+  const handleDeleteProduto = async (id: string) => {
+    await deleteDoc(doc(db, "produtos", id));
+    toast({
+      title: "Produto excluído",
+      description: "Produto removido com sucesso.",
+      variant: "destructive",
+    });
+    fetchProdutos();
+  };
+
+  // Criar novo produto
+  const handleAdicionarProduto = async () => {
+    if (!novoProduto.nomeProd || novoProduto.precoPorKg <= 0) return;
+
+    try {
+      const docRef = await addDoc(collection(db, "produtos"), novoProduto);
+      toast({ title: "Produto criado com sucesso" });
+      setIsDialogOpen(false);
+      setNovoProduto({ nomeProd: "", tipo: "moído", precoPorKg: 0, descricao: "" });
+      fetchProdutos();
+    } catch {
+      toast({ title: "Erro ao criar produto", variant: "destructive" });
     }
   };
 
-  const handleSaveProduct = () => {
-    toast({
-      title: isEditing ? "Produto atualizado" : "Produto criado",
-      description: `O produto foi ${isEditing ? "atualizado" : "criado"} com sucesso.`,
-    });
-    setIsDialogOpen(false);
-    setSelectedProduct(null);
-    setIsEditing(false);
+  // Abrir diálogo para editar produto e suas bags
+  const openEditDialog = (produto: ProdutoComBags) => {
+    setEditProduto(produto);
+    setEditingBags(produto.bags);
+    setIsEditDialogOpen(true);
   };
 
-  const handleEditProduct = (produto: Produto) => {
-    setSelectedProduct(produto);
-    setIsEditing(true);
-    setIsDialogOpen(true);
+  // Atualizar produto no Firestore
+  const handleUpdateProduto = async () => {
+    if (!editProduto) return;
+    try {
+      // Atualiza dados do produto
+      await updateDoc(doc(db, "produtos", editProduto.id), {
+        nomeProd: editProduto.nomeProd,
+        tipo: editProduto.tipo,
+        precoPorKg: editProduto.precoPorKg,
+        descricao: editProduto.descricao,
+      });
+
+      // Atualiza bags: para cada bag, se tem id real no Firestore, updateDoc; senão addDoc
+      await Promise.all(
+        editingBags.map(async (bag) => {
+          const bagRef = doc(db, "produtos", editProduto.id, "bags", bag.id);
+
+          if (bag.id.startsWith("temp-") || bag.id.length < 10) {
+            await addDoc(collection(db, "produtos", editProduto.id, "bags"), {
+              pesoKg: bag.pesoKg,
+              status: bag.status,
+              criadoEm:
+                bag.criadoEm instanceof Date
+                  ? Timestamp.fromDate(bag.criadoEm)
+                  : bag.criadoEm,
+              produtoId: editProduto.id,
+            });
+          } else {
+            await updateDoc(bagRef, {
+              pesoKg: bag.pesoKg,
+              status: bag.status,
+              criadoEm:
+                bag.criadoEm instanceof Date
+                  ? Timestamp.fromDate(bag.criadoEm)
+                  : bag.criadoEm,
+              produtoId: editProduto.id,
+            });
+          }
+        })
+      );
+
+      toast({ title: "Produto atualizado com sucesso" });
+      setIsEditDialogOpen(false);
+      setEditProduto(null);
+      fetchProdutos();
+    } catch {
+      toast({ title: "Erro ao atualizar produto", variant: "destructive" });
+    }
   };
 
-  const handleDeleteProduct = (id: string) => {
-    setProdutos(produtos.filter(p => p.id !== id));
-    toast({
-      title: "Produto excluído",
-      description: "O produto foi excluído com sucesso.",
-      variant: "destructive",
-    });
+  // Atualizar campo bag localmente
+  const updateBagField = (id: string, field: keyof Omit<Bag, "id">, value: any) => {
+    setEditingBags((prev) =>
+      prev.map((bag) =>
+        bag.id === id
+          ? {
+              ...bag,
+              [field]: value,
+              produtoId: bag.produtoId,
+            }
+          : bag
+      )
+    );
+  };
+
+  // Adicionar bag nova no estado local
+  const handleAddBag = () => {
+    if (!editProduto) return;
+
+    const novaBag: Bag = {
+      id: `temp-${Math.random().toString(36).substring(2, 9)}`,
+      pesoKg: 0,
+      status: "disponivel",
+      criadoEm: new Date(),
+      produtoId: editProduto.id,
+    };
+    setEditingBags((prev) => [...prev, novaBag]);
+  };
+
+  // Remover bag localmente e no firestore se já existe lá
+  const handleRemoveBag = async (id: string) => {
+    if (!editProduto) return;
+    const bagExisteNoFirestore = !id.startsWith("temp-") && !id.includes(".");
+
+    if (bagExisteNoFirestore) {
+      await deleteDoc(doc(db, "produtos", editProduto.id, "bags", id));
+    }
+
+    setEditingBags((prev) => prev.filter((b) => b.id !== id));
+  };
+
+  // Filtrar produtos
+  const produtosFiltrados = produtos.filter(
+    (p) =>
+      p.nomeProd.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.descricao?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  // Calcular estoque total
+  const calcularEstoqueTotal = (bags: Bag[]) =>
+    bags.reduce((acc, bag) => (bag.status === "disponivel" ? acc + bag.pesoKg : acc), 0);
+
+  // Cores para status das bags
+  const statusColors: Record<Bag["status"], string> = {
+    disponivel: "bg-green-200 text-green-800",
+    reservado: "bg-gray-200 text-gray-800",
+    vendido: "bg-yellow-300 text-yellow-900",
   };
 
   return (
-    <div className="flex-1 space-y-6 p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Produtos</h1>
-          <p className="text-muted-foreground">
-            Gerencie seu catálogo de produtos por categoria
-          </p>
-        </div>
+    <div className="p-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold">Produtos</h1>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            <Button className="gap-2">
-              <Plus className="h-4 w-4" />
-              Novo Produto
-            </Button>
+            <Button>Novo Produto</Button>
           </DialogTrigger>
-          <DialogContent className="max-w-3xl">
+          <DialogContent>
             <DialogHeader>
-              <DialogTitle>
-                {isEditing ? "Editar Produto" : "Novo Produto"}
-              </DialogTitle>
-              <DialogDescription>
-                {isEditing ? "Edite as informações do produto" : "Cadastre um novo produto no sistema"}
-              </DialogDescription>
+              <DialogTitle>Novo Produto</DialogTitle>
             </DialogHeader>
-            <div className="grid gap-4 py-4 max-h-96 overflow-y-auto">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="nome">Nome do Produto *</Label>
-                  <Input id="nome" placeholder="Digite o nome do produto" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="categoria">Categoria *</Label>
-                  <Select>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione a categoria" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Produto Final">Produto Final</SelectItem>
-                      <SelectItem value="Material Moído">Material Moído</SelectItem>
-                      <SelectItem value="MCOLOR">MCOLOR</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+            {/* Scroll para o form */}
+            <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto">
+              <div className="space-y-2">
+                <Label htmlFor="nome">Nome</Label>
+                <Input
+                  id="nome"
+                  value={novoProduto.nomeProd}
+                  onChange={(e) =>
+                    setNovoProduto((p) => ({ ...p, nomeProd: e.target.value }))
+                  }
+                />
               </div>
-
               <div className="space-y-2">
                 <Label htmlFor="descricao">Descrição</Label>
-                <Textarea id="descricao" placeholder="Descreva o produto" />
+                <Input
+                  id="descricao"
+                  value={novoProduto.descricao}
+                  onChange={(e) =>
+                    setNovoProduto((p) => ({ ...p, descricao: e.target.value }))
+                  }
+                />
               </div>
-
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="preco">Preço (R$) *</Label>
-                  <Input id="preco" type="number" step="0.01" placeholder="0,00" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="estoqueMinimo">Estoque Mínimo *</Label>
-                  <Input id="estoqueMinimo" type="number" placeholder="0" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="unidade">Unidade *</Label>
-                  <Select>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Unidade" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="UN">Unidade (UN)</SelectItem>
-                      <SelectItem value="KG">Quilograma (KG)</SelectItem>
-                      <SelectItem value="LT">Litro (LT)</SelectItem>
-                      <SelectItem value="M">Metro (M)</SelectItem>
-                      <SelectItem value="M2">Metro² (M²)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="tipo">Tipo</Label>
+                <select
+                  id="tipo"
+                  className="w-full border rounded px-3 py-2"
+                  value={novoProduto.tipo}
+                  onChange={(e) =>
+                    setNovoProduto((p) => ({
+                      ...p,
+                      tipo: e.target.value as ProdutoModel["tipo"],
+                    }))
+                  }
+                >
+                  <option value="moído">Moído</option>
+                  <option value="borra">Borra</option>
+                  <option value="outro">Outro</option>
+                </select>
               </div>
-
-              {/* Campos específicos para Material Moído */}
-              <div className="border-t pt-4">
-                <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                  <Scale className="h-5 w-5" />
-                  Configurações de Material Moído
-                </h3>
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="pesoSaco">Peso por Saco (KG)</Label>
-                    <Input id="pesoSaco" type="number" placeholder="25" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="tipoMaterial">Tipo de Material</Label>
-                    <Select>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione o tipo" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Premium Grade A">Premium Grade A</SelectItem>
-                        <SelectItem value="Standard Grade B">Standard Grade B</SelectItem>
-                        <SelectItem value="Economy Grade C">Economy Grade C</SelectItem>
-                        <SelectItem value="Especial Fino">Especial Fino</SelectItem>
-                        <SelectItem value="Especial Grosso">Especial Grosso</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="quantidadeSacos">Quantidade de Sacos</Label>
-                    <Input id="quantidadeSacos" type="number" placeholder="10" />
-                  </div>
-                </div>
-                <p className="text-sm text-muted-foreground mt-2">
-                  * Campos específicos para produtos da categoria "Material Moído"
-                </p>
+              <div className="space-y-2">
+                <Label htmlFor="preco">Preço por KG</Label>
+                <Input
+                  id="preco"
+                  type="number"
+                  step="0.01"
+                  value={novoProduto.precoPorKg}
+                  onChange={(e) =>
+                    setNovoProduto((p) => ({
+                      ...p,
+                      precoPorKg: parseFloat(e.target.value),
+                    }))
+                  }
+                />
               </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
                 Cancelar
               </Button>
-              <Button onClick={handleSaveProduct}>
-                {isEditing ? "Atualizar" : "Salvar"}
-              </Button>
+              <Button onClick={handleAdicionarProduto}>Salvar</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
 
-      {/* Filtros */}
-      <div className="flex items-center space-x-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar produtos..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-8"
-          />
-        </div>
-        <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-          <SelectTrigger className="w-48">
-            <SelectValue placeholder="Filtrar por categoria" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todas as categorias</SelectItem>
-            <SelectItem value="Produto Final">Produto Final</SelectItem>
-            <SelectItem value="Material Moído">Material Moído</SelectItem>
-            <SelectItem value="MCOLOR">MCOLOR</SelectItem>
-          </SelectContent>
-        </Select>
+      {/* Busca */}
+      <div className="relative max-w-md">
+        <Search className="absolute left-2 top-2.5 w-4 h-4 text-muted-foreground" />
+        <Input
+          placeholder="Buscar produtos..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="pl-8"
+        />
       </div>
 
-      {/* Lista de produtos */}
+      {/* Lista produtos */}
       <div className="grid gap-4">
-        {filteredProdutos.map((produto) => (
-          <Card key={produto.id} className={isLowStock(produto) ? "border-amber-200 bg-amber-50" : ""}>
-            <CardContent className="p-6">
-              <div className="flex items-start justify-between">
-                <div className="space-y-3 flex-1">
-                  <div className="flex items-center gap-3">
-                    <h3 className="text-lg font-semibold">{produto.nome}</h3>
-                    <Badge className={getCategoryColor(produto.categoria)}>
-                      {produto.categoria}
-                    </Badge>
-                    {isLowStock(produto) && (
-                      <Badge variant="destructive" className="gap-1">
-                        <AlertTriangle className="h-3 w-3" />
-                        Estoque Baixo
-                      </Badge>
-                    )}
+        {produtosFiltrados.map((produto) => {
+          const estoqueTotal = calcularEstoqueTotal(produto.bags);
+
+          return (
+            <Card
+              key={produto.id}
+              className={estoqueTotal <= 0 ? "border-red-300 bg-red-50" : ""}
+            >
+              <CardContent className="p-6">
+                <div className="flex justify-between">
+                  <div>
+                    <h2 className="text-xl font-bold">{produto.nomeProd}</h2>
+                    <p className="text-sm text-muted-foreground">{produto.descricao}</p>
+                    <p className="text-sm mt-2">
+                      Tipo: <strong>{produto.tipo}</strong>
+                      <br />
+                      Preço por KG:{" "}
+                      <strong>R$ {produto.precoPorKg.toFixed(2).replace(".", ",")}</strong>
+                      <br />
+                      Estoque disponível: <strong>{estoqueTotal.toFixed(2)} KG</strong>
+                    </p>
                   </div>
-                  
-                  <div className="grid md:grid-cols-2 gap-4 text-sm text-muted-foreground">
-                    <div className="space-y-2">
-                      <p>{produto.descricao}</p>
-                      <div className="flex items-center gap-2">
-                        <Package className="h-4 w-4" />
-                        Código: {produto.id}
-                      </div>
-                      
-                      {/* Informações específicas para Material Moído */}
-                      {produto.categoria === "Material Moído" && produto.pesoSaco && (
-                        <div className="space-y-1 p-3 bg-orange-50 rounded-lg border">
-                          <div className="flex items-center gap-2 font-medium text-orange-800">
-                            <Scale className="h-4 w-4" />
-                            Informações do Material Moído
-                          </div>
-                          <div className="grid grid-cols-2 gap-2 text-xs">
-                            <div>Peso por saco: <strong>{produto.pesoSaco} KG</strong></div>
-                            <div>Quantidade: <strong>{produto.quantidadeSacos} sacos</strong></div>
-                            <div className="col-span-2">Tipo: <strong>{produto.tipoMaterial}</strong></div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <div className="text-lg font-bold text-primary">
-                        R$ {produto.preco.toFixed(2).replace('.', ',')}
-                        <span className="text-sm font-normal text-muted-foreground">/{produto.unidade}</span>
-                      </div>
-                      <div className={`text-sm ${isLowStock(produto) ? "text-amber-600 font-medium" : ""}`}>
-                        Estoque: <span className="font-medium">{produto.estoqueAtual}</span> {produto.unidade}
-                        <br />
-                        Mínimo: {produto.estoqueMinimo} {produto.unidade}
-                      </div>
-                      {produto.categoria === "Material Moído" && produto.pesoSaco && (
-                        <div className="text-sm text-orange-700">
-                          Total em sacos: <strong>{Math.floor(produto.estoqueAtual / produto.pesoSaco)} sacos</strong>
-                        </div>
-                      )}
-                      <div className="text-xs">
-                        Cadastrado em: {produto.dataCadastro}
-                      </div>
-                    </div>
+                  <div className="flex gap-2 items-start">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openEditDialog(produto)}
+                    >
+                      <Edit className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDeleteProduto(produto.id)}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 ml-4">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleEditProduct(produto)}
-                  >
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleDeleteProduct(produto.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+                {produto.bags.length > 0 && (
+                  <div className="mt-4">
+                    <p className="text-sm font-medium mb-2">Bags disponíveis:</p>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      {produto.bags.map((bag, index) => (
+                        <div
+                          key={bag.id}
+                          className={`flex justify-between items-center border rounded px-2 py-1 shadow-sm ${statusColors[bag.status]}`}
+                        >
+                          <span className="font-semibold">{`Bag ${String(index + 1).padStart(2, "0")}`}</span>
+                          <span>
+                            {bag.pesoKg.toFixed(2)} KG -{" "}
+                            <span className="capitalize">{bag.status}</span>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
-      {filteredProdutos.length === 0 && (
-        <Card>
-          <CardContent className="p-12 text-center">
-            <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-semibold mb-2">Nenhum produto encontrado</h3>
-            <p className="text-muted-foreground">
-              {searchTerm || selectedCategory !== "all" 
-                ? "Tente ajustar os filtros de busca" 
-                : "Cadastre seu primeiro produto para começar"}
-            </p>
-          </CardContent>
-        </Card>
-      )}
+      {/* Dialog edição produto + bags */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Produto</DialogTitle>
+          </DialogHeader>
+          {editProduto && (
+            <div className="space-y-4 max-h-[70vh] overflow-y-auto">
+              <div className="space-y-2">
+                <Label>Nome</Label>
+                <Input
+                  value={editProduto.nomeProd}
+                  onChange={(e) =>
+                    setEditProduto({ ...editProduto, nomeProd: e.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Descrição</Label>
+                <Input
+                  value={editProduto.descricao}
+                  onChange={(e) =>
+                    setEditProduto({ ...editProduto, descricao: e.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Tipo</Label>
+                <select
+                  className="w-full border rounded px-3 py-2"
+                  value={editProduto.tipo}
+                  onChange={(e) =>
+                    setEditProduto({ ...editProduto, tipo: e.target.value as ProdutoModel["tipo"] })
+                  }
+                >
+                  <option value="moído">Moído</option>
+                  <option value="borra">Borra</option>
+                  <option value="outro">Outro</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label>Preço por KG</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={editProduto.precoPorKg}
+                  onChange={(e) =>
+                    setEditProduto({ ...editProduto, precoPorKg: parseFloat(e.target.value) })
+                  }
+                />
+              </div>
+
+              {/* Edição bags */}
+              <div className="space-y-2 mt-4">
+                <Label>Bags</Label>
+                {editingBags.map((bag, index) => (
+                  <div
+                    key={bag.id}
+                    className={`flex gap-2 items-center ${statusColors[bag.status]} rounded p-2`}
+                  >
+                    <span className="font-semibold min-w-[70px]">{`Bag ${String(index + 1).padStart(2, "0")}`}</span>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min={0}
+                      value={bag.pesoKg}
+                      onChange={(e) =>
+                        updateBagField(bag.id, "pesoKg", parseFloat(e.target.value))
+                      }
+                      className="flex-1"
+                    />
+                    <select
+                      value={bag.status}
+                      onChange={(e) =>
+                        updateBagField(bag.id, "status", e.target.value as Bag["status"])
+                      }
+                      className="border rounded px-2 py-1"
+                    >
+                      <option value="disponivel">Disponível</option>
+                      <option value="reservado">Reservado</option>
+                      <option value="vendido">Vendido</option>
+                    </select>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleRemoveBag(bag.id)}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ))}
+                <Button variant="outline" size="sm" onClick={handleAddBag}>
+                  Adicionar Bag
+                </Button>
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button onClick={handleUpdateProduto}>Salvar</Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

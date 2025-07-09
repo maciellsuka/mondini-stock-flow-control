@@ -15,6 +15,7 @@ export interface Produto {
 // 🧊 Bag individual (subcoleção dentro de produto)
 // ==========================
 export interface Bag {
+  produtoId: string;
   id: string;
   pesoKg: number;
   status: "disponivel" | "reservado" | "vendido";

@@ -197,7 +197,10 @@ export const generatePedidoPDF = (pedido: Pedido) => {
 
       <div class="footer">
         <p>Documento gerado em ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR')}</p>
-        <p>MONDINI - Sistema de Controle de Estoque</p>
+        <p>MONDINI PLASTICOS ESPECIAIS</p>
+        <p>Avenida Coronel Antonio Estanislau do Amaral, 544 - B. Itaici			
+  CNPJ: 39.694.722/0001-29 - IE: 353.439.082.115 - TELEFONE (19) 97403-9792			
+        </p>
       </div>
     </body>
     </html>
