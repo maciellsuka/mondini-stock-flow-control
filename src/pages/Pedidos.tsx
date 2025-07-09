@@ -575,13 +575,18 @@
                       type="number"
                       min={0.01}
                       step={0.01}
-                      value={novoItem.quantidade}
-                      onChange={(e) =>
-                        setNovoItem({ ...novoItem, quantidade: parseFloat(e.target.value) || 1 })
-                      }
+                      value={novoItem.quantidade === 0 ? "" : novoItem.quantidade}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setNovoItem({
+                          ...novoItem,
+                          quantidade: val === "" ? 0 : parseFloat(val),
+                        });
+                      }}
                       placeholder="Peso (kg)"
                       className="w-32"
                     />
+
 
                     <Button onClick={adicionarItem} disabled={!novoItem.produtoId || novoItem.quantidade <= 0}>
                       Adicionar

@@ -41,7 +41,6 @@ const navigation = [
     title: "Estoque",
     url: "/estoque",
     icon: ShoppingCart,
-    disabled: true,
   },
   {
     title: "Pedidos",

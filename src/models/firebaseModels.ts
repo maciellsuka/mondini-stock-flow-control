@@ -68,6 +68,10 @@ export interface Pedido {
   total: number;
 }
 
+export interface ProdutoComBags extends Produto {
+  bags: Bag[];
+}
+
 // ==========================
 // 🧮 Função para calcular o total do pedido
 // ==========================
