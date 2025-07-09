@@ -16,7 +16,7 @@ export function Layout({ children }: LayoutProps) {
             <SidebarTrigger className="-ml-1" />
             <div className="flex-1" />
             <div className="text-sm text-muted-foreground">
-              Sistema MONDINI - Controle de Estoque
+              Sistema de Controle e Pedidos
             </div>
           </header>
           <main className="flex-1 overflow-auto">

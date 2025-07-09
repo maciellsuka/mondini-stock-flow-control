@@ -1,10 +1,11 @@
-
 import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import { Plus, Search, Edit, Trash2, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -22,117 +23,116 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-interface Cliente {
-  id: number;
-  nome: string;
-  email: string;
-  telefone: string;
-  endereco: string;
-  cidade: string;
-  estado: string;
-  cep: string;
-  observacoes?: string;
-  dataCadastro: string;
-}
+import { Cliente } from "@/models/firebaseModels";
 
 export default function Clientes() {
-  const [clientes, setClientes] = useState<Cliente[]>([
-    {
-      id: 1,
-      nome: "João Silva",
-      email: "joao@email.com",
-      telefone: "(11) 99999-9999",
-      endereco: "Rua das Flores, 123",
-      cidade: "São Paulo",
-      estado: "SP",
-      cep: "01234-567",
-      observacoes: "Cliente preferencial",
-      dataCadastro: "2024-01-15"
-    },
-    {
-      id: 2,
-      nome: "Maria Santos",
-      email: "maria@email.com",
-      telefone: "(11) 88888-8888",
-      endereco: "Av. Principal, 456",
-      cidade: "São Paulo",
-      estado: "SP",
-      cep: "01234-890",
-      dataCadastro: "2024-02-20"
-    }
-  ]);
-
+  const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingCliente, setEditingCliente] = useState<Cliente | null>(null);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<Omit<Cliente, "id" | "dataCadastro">>({
     nome: "",
-    email: "",
     telefone: "",
+    cnpj: "",
     endereco: "",
+    bairro: "",
     cidade: "",
     estado: "",
     cep: "",
-    observacoes: ""
   });
 
-  const filteredClientes = clientes.filter(cliente =>
-    cliente.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    cliente.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    cliente.telefone.includes(searchTerm)
-  );
+  // Função pra buscar endereço pelo CEP via ViaCEP
+  async function buscarCep(cep: string) {
+    const cepLimpo = cep.replace(/\D/g, "");
+    if (cepLimpo.length !== 8) return null;
+
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${cepLimpo}/json/`);
+      const data = await res.json();
+      if (data.erro) return null;
+      return data;
+    } catch {
+      return null;
+    }
+  }
+
+  const { data: clientes = [], isLoading: isLoadingClientes } = useQuery<Cliente[]>({
+    queryKey: ["clientes"],
+    queryFn: async () => {
+      const snapshot = await getDocs(collection(db, "clientes"));
+      return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as Cliente));
+    },
+  });
+
+  const addOrUpdateClienteMutation = useMutation({
+    mutationFn: async () => {
+      if (!formData.nome.trim() || !formData.telefone.trim() || !formData.cnpj.trim()) {
+        throw new Error("Nome, telefone e CNPJ são obrigatórios.");
+      }
+      if (editingCliente) {
+        await updateDoc(doc(db, "clientes", editingCliente.id), formData);
+      } else {
+        await addDoc(collection(db, "clientes"), {
+          ...formData,
+          dataCadastro: new Date().toISOString(),
+        });
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["clientes"] });
+      setIsDialogOpen(false);
+      resetForm();
+    },
+    onError: (error: any) => {
+      alert(error.message || "Erro ao salvar cliente.");
+    },
+  });
+
+  const deleteClienteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await deleteDoc(doc(db, "clientes", id));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["clientes"] });
+    },
+  });
 
   const resetForm = () => {
     setFormData({
       nome: "",
-      email: "",
       telefone: "",
+      cnpj: "",
       endereco: "",
+      bairro: "",
       cidade: "",
       estado: "",
       cep: "",
-      observacoes: ""
     });
     setEditingCliente(null);
-  };
-
-  const handleSave = () => {
-    if (editingCliente) {
-      setClientes(prev => prev.map(cliente =>
-        cliente.id === editingCliente.id
-          ? { ...cliente, ...formData }
-          : cliente
-      ));
-    } else {
-      const novoCliente: Cliente = {
-        id: Date.now(),
-        ...formData,
-        dataCadastro: new Date().toISOString().split('T')[0]
-      };
-      setClientes(prev => [...prev, novoCliente]);
-    }
-    setIsDialogOpen(false);
-    resetForm();
   };
 
   const handleEdit = (cliente: Cliente) => {
     setEditingCliente(cliente);
     setFormData({
       nome: cliente.nome,
-      email: cliente.email,
       telefone: cliente.telefone,
+      cnpj: cliente.cnpj,
       endereco: cliente.endereco,
+      bairro: cliente.bairro,
       cidade: cliente.cidade,
       estado: cliente.estado,
       cep: cliente.cep,
-      observacoes: cliente.observacoes || ""
     });
     setIsDialogOpen(true);
   };
 
-  const handleDelete = (id: number) => {
-    setClientes(prev => prev.filter(cliente => cliente.id !== id));
-  };
+  const filteredClientes = clientes.filter((cliente) =>
+    cliente.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    cliente.telefone.includes(searchTerm) ||
+    cliente.cnpj.includes(searchTerm)
+  );
+
+  const { isLoading: isSaving } = addOrUpdateClienteMutation;
 
   return (
     <div className="p-6 space-y-6">
@@ -161,17 +161,6 @@ export default function Clientes() {
                   id="nome"
                   value={formData.nome}
                   onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
-                  placeholder="Nome completo"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="email">E-mail *</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  placeholder="email@exemplo.com"
                 />
               </div>
               <div className="space-y-2">
@@ -180,7 +169,14 @@ export default function Clientes() {
                   id="telefone"
                   value={formData.telefone}
                   onChange={(e) => setFormData({ ...formData, telefone: e.target.value })}
-                  placeholder="(11) 99999-9999"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="cnpj">CNPJ *</Label>
+                <Input
+                  id="cnpj"
+                  value={formData.cnpj}
+                  onChange={(e) => setFormData({ ...formData, cnpj: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
@@ -189,7 +185,28 @@ export default function Clientes() {
                   id="cep"
                   value={formData.cep}
                   onChange={(e) => setFormData({ ...formData, cep: e.target.value })}
-                  placeholder="00000-000"
+                  onBlur={async () => {
+                    const dados = await buscarCep(formData.cep);
+                    if (dados) {
+                      setFormData((old) => ({
+                        ...old,
+                        endereco: dados.logradouro || "",
+                        bairro: dados.bairro || "",
+                        cidade: dados.localidade || "",
+                        estado: dados.uf || "",
+                      }));
+                    } else if(formData.cep.trim().length > 0) {
+                      alert("CEP inválido ou não encontrado");
+                    }
+                  }}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="bairro">Bairro</Label>
+                <Input
+                  id="bairro"
+                  value={formData.bairro}
+                  onChange={(e) => setFormData({ ...formData, bairro: e.target.value })}
                 />
               </div>
               <div className="space-y-2 col-span-2">
@@ -198,7 +215,6 @@ export default function Clientes() {
                   id="endereco"
                   value={formData.endereco}
                   onChange={(e) => setFormData({ ...formData, endereco: e.target.value })}
-                  placeholder="Rua, número, complemento"
                 />
               </div>
               <div className="space-y-2">
@@ -207,7 +223,6 @@ export default function Clientes() {
                   id="cidade"
                   value={formData.cidade}
                   onChange={(e) => setFormData({ ...formData, cidade: e.target.value })}
-                  placeholder="Cidade"
                 />
               </div>
               <div className="space-y-2">
@@ -216,24 +231,14 @@ export default function Clientes() {
                   id="estado"
                   value={formData.estado}
                   onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
-                  placeholder="SP"
-                />
-              </div>
-              <div className="space-y-2 col-span-2">
-                <Label htmlFor="observacoes">Observações</Label>
-                <Textarea
-                  id="observacoes"
-                  value={formData.observacoes}
-                  onChange={(e) => setFormData({ ...formData, observacoes: e.target.value })}
-                  placeholder="Observações sobre o cliente"
                 />
               </div>
             </div>
             <div className="flex justify-end gap-2 mt-4">
-              <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+              <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSaving}>
                 Cancelar
               </Button>
-              <Button onClick={handleSave}>
+              <Button onClick={() => addOrUpdateClienteMutation.mutate()} disabled={isSaving}>
                 {editingCliente ? "Atualizar" : "Salvar"}
               </Button>
             </div>
@@ -251,17 +256,6 @@ export default function Clientes() {
             <div className="text-2xl font-bold">{clientes.length}</div>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Novos Este Mês</CardTitle>
-            <User className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {clientes.filter(c => new Date(c.dataCadastro).getMonth() === new Date().getMonth()).length}
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       <Card>
@@ -269,7 +263,7 @@ export default function Clientes() {
           <div className="flex items-center gap-2">
             <Search className="w-4 h-4" />
             <Input
-              placeholder="Buscar por nome, email ou telefone..."
+              placeholder="Buscar por nome, telefone ou CNPJ..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="max-w-sm"
@@ -281,10 +275,8 @@ export default function Clientes() {
             <TableHeader>
               <TableRow>
                 <TableHead>Nome</TableHead>
-                <TableHead>E-mail</TableHead>
                 <TableHead>Telefone</TableHead>
                 <TableHead>Cidade</TableHead>
-                <TableHead>Data Cadastro</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
@@ -292,10 +284,8 @@ export default function Clientes() {
               {filteredClientes.map((cliente) => (
                 <TableRow key={cliente.id}>
                   <TableCell className="font-medium">{cliente.nome}</TableCell>
-                  <TableCell>{cliente.email}</TableCell>
                   <TableCell>{cliente.telefone}</TableCell>
                   <TableCell>{cliente.cidade}, {cliente.estado}</TableCell>
-                  <TableCell>{new Date(cliente.dataCadastro).toLocaleDateString()}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
                       <Button
@@ -308,7 +298,7 @@ export default function Clientes() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => handleDelete(cliente.id)}
+                        onClick={() => deleteClienteMutation.mutate(cliente.id)}
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>

@@ -1,4 +1,4 @@
-
+import LogoMondini from "../assets/Logo-Mondini.png";
 import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import {
@@ -80,17 +80,13 @@ export function AppSidebar() {
       <SidebarContent>
         <div className="p-4 border-b">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-              <Building2 className="w-5 h-5 text-primary-foreground" />
             </div>
             {state !== "collapsed" && (
               <div>
-                <h2 className="font-bold text-lg text-primary">MONDINI</h2>
-                <p className="text-xs text-muted-foreground">Sistema de Controle</p>
+                <img src={LogoMondini} alt="Logo Mondini" />
               </div>
             )}
           </div>
-        </div>
 
         <SidebarGroup>
           <SidebarGroupLabel>Menu Principal</SidebarGroupLabel>
