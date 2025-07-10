@@ -1,229 +1,181 @@
+import { db } from "@/lib/firebase";
+import { doc, getDoc } from "firebase/firestore";
 
 interface ItemPedido {
-  id: number;
-  produtoId: number;
+  id: string;
+  produtoId: string;
   produtoNome: string;
   quantidade: number;
   precoUnitario: number;
   subtotal: number;
+  bagsUsadas: { bagId: string; pesoUsado: number }[];
 }
 
 interface Pedido {
-  id: number;
-  clienteId: number;
+  id: string;
+  clienteId: string;
   clienteNome: string;
   dataPedido: string;
   dataEntrega?: string;
-  status: "pendente" | "processando" | "concluido" | "cancelado";
+  status: string;
   itens: ItemPedido[];
   total: number;
   observacoes?: string;
 }
 
-export const generatePedidoPDF = (pedido: Pedido) => {
-  // Criar um novo documento HTML para impressão
-  const printWindow = window.open('', '_blank');
-  
+export const generatePedidoPDF = async (pedido: Pedido) => {
+  const clienteRef = doc(db, "clientes", pedido.clienteId);
+  const clienteSnap = await getDoc(clienteRef);
+  const cliente = clienteSnap.exists() ? clienteSnap.data() : null;
+
+  const printWindow = window.open("", "_blank");
   if (!printWindow) {
-    alert('Por favor, permita pop-ups para gerar o PDF');
+    alert("Por favor, permita pop-ups para gerar o PDF");
     return;
   }
 
-  const htmlContent = `
+  const html = `
     <!DOCTYPE html>
     <html>
     <head>
-      <meta charset="UTF-8">
-      <title>Pedido #${pedido.id} - MONDINI</title>
+      <meta charset="UTF-8" />
+      <title>Pedido #${pedido.id}</title>
       <style>
         body {
           font-family: Arial, sans-serif;
-          margin: 0;
           padding: 20px;
           color: #333;
         }
         .header {
           text-align: center;
-          margin-bottom: 30px;
-          border-bottom: 2px solid #333;
-          padding-bottom: 20px;
+          margin-bottom: 20px;
         }
-        .company-name {
-          font-size: 28px;
-          font-weight: bold;
-          color: #2563eb;
-          margin-bottom: 5px;
+        .header img {
+          max-width: 180px;
         }
-        .company-subtitle {
-          font-size: 14px;
-          color: #666;
+        h2 {
+          margin: 10px 0;
         }
-        .pedido-info {
-          display: flex;
-          justify-content: space-between;
-          margin-bottom: 30px;
-          background-color: #f8f9fa;
-          padding: 15px;
-          border-radius: 5px;
-        }
-        .info-section {
-          flex: 1;
-        }
-        .info-title {
-          font-weight: bold;
-          color: #2563eb;
-          margin-bottom: 5px;
-        }
-        .status {
-          display: inline-block;
-          padding: 4px 12px;
-          border-radius: 20px;
-          font-size: 12px;
-          font-weight: bold;
-          text-transform: uppercase;
-        }
-        .status-pendente { background-color: #fef3c7; color: #92400e; }
-        .status-processando { background-color: #dbeafe; color: #1e40af; }
-        .status-concluido { background-color: #d1fae5; color: #065f46; }
-        .status-cancelado { background-color: #fee2e2; color: #991b1b; }
-        .itens-table {
+        table {
           width: 100%;
           border-collapse: collapse;
-          margin-bottom: 20px;
-          border: 1px solid #e5e7eb;
+          margin-top: 16px;
+          margin-bottom: 24px;
         }
-        .itens-table th,
-        .itens-table td {
-          border: 1px solid #e5e7eb;
-          padding: 12px;
+        th, td {
+          border: 1px solid #ccc;
+          padding: 8px 12px;
+          font-size: 14px;
+        }
+        th {
+          background-color: #f1f1f1;
           text-align: left;
         }
-        .itens-table th {
-          background-color: #f9fafb;
+        .total {
           font-weight: bold;
-          color: #374151;
-        }
-        .text-right {
-          text-align: right;
-        }
-        .total-row {
-          background-color: #f3f4f6;
-          font-weight: bold;
-        }
-        .observacoes {
-          margin-top: 20px;
-          padding: 15px;
-          background-color: #f8f9fa;
-          border-left: 4px solid #2563eb;
+          background-color: #f1f1f1;
         }
         .footer {
-          margin-top: 40px;
-          text-align: center;
           font-size: 12px;
+          text-align: center;
           color: #666;
-          border-top: 1px solid #e5e7eb;
-          padding-top: 20px;
-        }
-        @media print {
-          body { margin: 0; }
-          .no-print { display: none; }
+          margin-top: 40px;
+          border-top: 1px solid #ccc;
+          padding-top: 12px;
         }
       </style>
     </head>
     <body>
       <div class="header">
-        <div class="company-name">MONDINI</div>
-        <div class="company-subtitle">Sistema de Controle de Estoque</div>
+        <img src="/assets/Logo-Mondini.png" alt="Logo Mondini" style="max-width: 180px; margin: 0 auto;" />
       </div>
 
-      <div class="pedido-info">
-        <div class="info-section">
-          <div class="info-title">Pedido</div>
-          <div>#${pedido.id}</div>
-        </div>
-        <div class="info-section">
-          <div class="info-title">Cliente</div>
-          <div>${pedido.clienteNome}</div>
-        </div>
-        <div class="info-section">
-          <div class="info-title">Data do Pedido</div>
-          <div>${new Date(pedido.dataPedido).toLocaleDateString('pt-BR')}</div>
-        </div>
-        ${pedido.dataEntrega ? `
-        <div class="info-section">
-          <div class="info-title">Data de Entrega</div>
-          <div>${new Date(pedido.dataEntrega).toLocaleDateString('pt-BR')}</div>
-        </div>
-        ` : ''}
-        <div class="info-section">
-          <div class="info-title">Status</div>
-          <div class="status status-${pedido.status}">
-            ${getStatusLabel(pedido.status)}
-          </div>
-        </div>
-      </div>
+      <table>
+        <tr>
+          <th>Pedido nro.</th>
+          <td>${pedido.id}</td>
+          <th>Emissão</th>
+          <td>${new Date(pedido.dataPedido).toLocaleDateString("pt-BR")}</td>
+        </tr>
+        <tr>
+          <th>Cliente</th>
+          <td colspan="3">${pedido.clienteNome}</td>
+        </tr>
+        ${
+          cliente
+            ? `
+          <tr>
+            <th>Endereço</th>
+            <td>${cliente.endereco}</td>
+            <th>Telefone</th>
+            <td>${cliente.telefone}</td>
+          </tr>
+          <tr>
+            <th>Bairro</th>
+            <td>${cliente.bairro}</td>
+            <th>Cidade</th>
+            <td>${cliente.cidade} - ${cliente.estado}</td>
+          </tr>
+          <tr>
+            <th>CNPJ</th>
+            <td>${cliente.cnpj}</td>
+            <th>IE</th>
+            <td>${cliente.inscricao || "-"}</td>
+          </tr>`
+            : ""
+        }
+      </table>
 
-      <table class="itens-table">
+      <table>
         <thead>
           <tr>
+            <th>Qtd. (kg)</th>
             <th>Produto</th>
-            <th>Quantidade</th>
-            <th>Preço Unitário</th>
-            <th>Subtotal</th>
+            <th>Valor Unit.</th>
+            <th>Valor Total</th>
           </tr>
         </thead>
         <tbody>
-          ${pedido.itens.map(item => `
-            <tr>
-              <td>${item.produtoNome}</td>
-              <td class="text-right">${item.quantidade}</td>
-              <td class="text-right">R$ ${item.precoUnitario.toFixed(2)}</td>
-              <td class="text-right">R$ ${item.subtotal.toFixed(2)}</td>
-            </tr>
-          `).join('')}
-          <tr class="total-row">
+          ${pedido.itens
+            .map(
+              (item) => `
+              <tr>
+                <td>${item.quantidade.toFixed(2)}</td>
+                <td>${item.produtoNome}</td>
+                <td>R$ ${item.precoUnitario.toFixed(2)}</td>
+                <td>R$ ${item.subtotal.toFixed(2)}</td>
+              </tr>
+            `,
+            )
+            .join("")}
+          <tr class="total">
             <td colspan="3">TOTAL GERAL</td>
-            <td class="text-right">R$ ${pedido.total.toFixed(2)}</td>
+            <td>R$ ${pedido.total.toFixed(2)}</td>
           </tr>
         </tbody>
       </table>
 
-      ${pedido.observacoes ? `
-      <div class="observacoes">
-        <div class="info-title">Observações</div>
-        <div>${pedido.observacoes}</div>
-      </div>
-      ` : ''}
+      ${
+        pedido.observacoes
+          ? `<div><strong>Observações:</strong> ${pedido.observacoes}</div>`
+          : ""
+      }
 
       <div class="footer">
-        <p>Documento gerado em ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR')}</p>
-        <p>MONDINI PLASTICOS ESPECIAIS</p>
-        <p>Avenida Coronel Antonio Estanislau do Amaral, 544 - B. Itaici			
-  CNPJ: 39.694.722/0001-29 - IE: 353.439.082.115 - TELEFONE (19) 97403-9792			
-        </p>
+        Documento gerado em ${new Date().toLocaleDateString("pt-BR")} às ${new Date().toLocaleTimeString("pt-BR")}<br />
+        Avenida Coronel Antonio Estanislau do Amaral, 544 - B. Itaici<br />
+        CNPJ: 39.694.722/0001-29 - IE: 353.439.082.115 - TELEFONE (19) 97403-9792
       </div>
     </body>
     </html>
   `;
 
-  printWindow.document.write(htmlContent);
+  printWindow.document.write(html);
   printWindow.document.close();
-  
-  // Aguardar o carregamento e então imprimir
   printWindow.onload = () => {
     setTimeout(() => {
       printWindow.print();
       printWindow.close();
-    }, 100);
+    }, 200);
   };
-};
-
-const getStatusLabel = (status: string) => {
-  switch (status) {
-    case "pendente": return "Pendente";
-    case "processando": return "Processando";
-    case "concluido": return "Concluído";
-    case "cancelado": return "Cancelado";
-    default: return status;
-  }
 };
