@@ -87,7 +87,7 @@ export const generatePedidoPDF = async (pedido: Pedido) => {
     </head>
     <body>
       <div class="header">
-        <img src="/assets/Logo-Mondini.png" alt="Logo Mondini" style="max-width: 180px; margin: 0 auto;" />
+        <img src="/assets/Logo-Mondini-DGbuvNVK.png" alt="Logo Mondini" style="max-width: 180px; margin: 0 auto;" />
       </div>
 
       <table>
