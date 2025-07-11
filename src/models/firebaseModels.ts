@@ -20,6 +20,7 @@ export interface Bag {
   pesoKg: number;
   status: "disponivel" | "reservado" | "vendido";
   criadoEm: Date;
+  identificador?: string;
 }
 
 // ==========================

@@ -22,11 +22,20 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Search, Trash2, Edit, Package } from "lucide-react";
+import { Search, Trash2, Edit } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+
+import { jsPDF } from "jspdf";
 
 interface ProdutoComBags extends ProdutoModel {
   bags: Bag[];
+}
+
+interface EtiquetaBagProps {
+  identificador: string;
+  descricao: string;
+  pesoKg: number;
+  data: Date;
 }
 
 export default function Produtos() {
@@ -35,8 +44,8 @@ export default function Produtos() {
   const [produtos, setProdutos] = useState<ProdutoComBags[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
-  // Dados para criar novo produto
   const [novoProduto, setNovoProduto] = useState<Omit<ProdutoModel, "id">>({
     nomeProd: "",
     tipo: "moído",
@@ -44,56 +53,119 @@ export default function Produtos() {
     descricao: "",
   });
 
-  // Edição de produto
   const [editProduto, setEditProduto] = useState<ProdutoComBags | null>(null);
-
-  // Bags em edição (peso, status)
   const [editingBags, setEditingBags] = useState<Bag[]>([]);
 
-  // Dialog controle - se está em modo edição ou criação
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [etiquetaSelecionada, setEtiquetaSelecionada] = useState<EtiquetaBagProps | null>(null);
 
-  // Buscar produtos com suas bags
+  // Função atualizada e estilizada para gerar etiqueta PDF
+  function gerarEtiquetaPDF({ identificador, descricao, pesoKg, data }: EtiquetaBagProps) {
+    const doc = new jsPDF({
+      orientation: "landscape",
+      unit: "mm",
+      format: [100, 50],
+    });
+
+    const dataFormatada = data.toLocaleDateString("pt-BR");
+
+    // Fundo clarinho
+    doc.setFillColor(245, 245, 245);
+    doc.rect(0, 0, 100, 50, "F");
+
+    // Logo ou título top centralizado
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor("#333");
+    doc.text("MONDINI", 50, 10, { align: "center" });
+
+    // Linha separadora
+    doc.setDrawColor("#999");
+    doc.setLineWidth(0.3);
+    doc.line(10, 13, 90, 13);
+
+    // Descrição (mais destaque)
+    doc.setFontSize(24);  
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor("#222");
+    const descricaoLines = doc.splitTextToSize(descricao, 80);
+    doc.text(descricaoLines, 50, 25, {align: "center"});
+
+    // Peso KG
+    doc.setFontSize(26);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor("#007700");
+    doc.text(`Peso: ${pesoKg.toFixed(2).replace(".", ",")} KG`, 50, 37, { align: "center" });
+
+    // Número da Bag
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "italic", "bold");
+    doc.setTextColor("#555");
+    doc.text(`Nº da Bag: ${identificador}`, 10, 45);
+
+    // Data gerada no canto direito
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor("#555");
+    doc.text(`Data: ${dataFormatada}`, 90, 45, { align: "right" });
+
+    // Opcional: borda arredondada
+    doc.setDrawColor("#007700");
+    doc.setLineWidth(1);
+    doc.roundedRect(1, 1, 98, 48, 3, 3);
+
+    // Gera e abre em nova aba
+    window.open(doc.output("bloburl"));
+  }
+
   const fetchProdutos = async () => {
-    const produtosSnapshot = await getDocs(collection(db, "produtos"));
-    const produtosData: ProdutoComBags[] = [];
+    try {
+      const snapshot = await getDocs(collection(db, "produtos"));
+      const produtosData: ProdutoComBags[] = [];
 
-    for (const docSnap of produtosSnapshot.docs) {
-      const produto = docSnap.data() as ProdutoModel;
-      const bagsSnap = await getDocs(collection(db, `produtos/${docSnap.id}/bags`));
-      const bags: Bag[] = bagsSnap.docs.map((b) => ({
-        ...(b.data() as Omit<Bag, "criadoEm">),
-        id: b.id,
-        criadoEm: b.data().criadoEm?.toDate?.() || new Date(),
-        produtoId: b.data().produtoId,
-      }));
-      produtosData.push({ ...produto, id: docSnap.id, bags });
+      for (const docSnap of snapshot.docs) {
+        const produto = docSnap.data() as ProdutoModel;
+        const bagsSnap = await getDocs(collection(db, `produtos/${docSnap.id}/bags`));
+        const bags: Bag[] = bagsSnap.docs.map((b) => ({
+          ...(b.data() as Omit<Bag, "criadoEm">),
+          id: b.id,
+          criadoEm: b.data().criadoEm?.toDate?.() || new Date(),
+          produtoId: b.data().produtoId,
+          identificador: b.data().identificador || "",
+          status: b.data().status || "disponivel",
+          pesoKg: b.data().pesoKg || 0,
+        }));
+
+        produtosData.push({ ...produto, id: docSnap.id, bags });
+      }
+
+      setProdutos(produtosData);
+    } catch (error) {
+      toast({ title: "Erro ao buscar produtos", variant: "destructive" });
     }
-
-    setProdutos(produtosData);
   };
 
   useEffect(() => {
     fetchProdutos();
   }, []);
 
-  // Deletar produto (e suas bags)
   const handleDeleteProduto = async (id: string) => {
-    await deleteDoc(doc(db, "produtos", id));
-    toast({
-      title: "Produto excluído",
-      description: "Produto removido com sucesso.",
-      variant: "destructive",
-    });
-    fetchProdutos();
+    try {
+      await deleteDoc(doc(db, "produtos", id));
+      toast({ title: "Produto excluído", variant: "destructive" });
+      fetchProdutos();
+    } catch {
+      toast({ title: "Erro ao excluir produto", variant: "destructive" });
+    }
   };
 
-  // Criar novo produto
   const handleAdicionarProduto = async () => {
-    if (!novoProduto.nomeProd || novoProduto.precoPorKg <= 0) return;
+    if (!novoProduto.nomeProd.trim() || novoProduto.precoPorKg <= 0) {
+      toast({ title: "Preencha o nome e o preço corretamente", variant: "destructive" });
+      return;
+    }
 
     try {
-      const docRef = await addDoc(collection(db, "produtos"), novoProduto);
+      await addDoc(collection(db, "produtos"), novoProduto);
       toast({ title: "Produto criado com sucesso" });
       setIsDialogOpen(false);
       setNovoProduto({ nomeProd: "", tipo: "moído", precoPorKg: 0, descricao: "" });
@@ -103,18 +175,21 @@ export default function Produtos() {
     }
   };
 
-  // Abrir diálogo para editar produto e suas bags
   const openEditDialog = (produto: ProdutoComBags) => {
     setEditProduto(produto);
     setEditingBags(produto.bags);
     setIsEditDialogOpen(true);
   };
 
-  // Atualizar produto no Firestore
   const handleUpdateProduto = async () => {
     if (!editProduto) return;
+
+    if (!editProduto.nomeProd.trim() || editProduto.precoPorKg <= 0) {
+      toast({ title: "Nome e preço inválidos", variant: "destructive" });
+      return;
+    }
+
     try {
-      // Atualiza dados do produto
       await updateDoc(doc(db, "produtos", editProduto.id), {
         nomeProd: editProduto.nomeProd,
         tipo: editProduto.tipo,
@@ -122,31 +197,25 @@ export default function Produtos() {
         descricao: editProduto.descricao,
       });
 
-      // Atualiza bags: para cada bag, se tem id real no Firestore, updateDoc; senão addDoc
       await Promise.all(
         editingBags.map(async (bag) => {
           const bagRef = doc(db, "produtos", editProduto.id, "bags", bag.id);
 
-          if (bag.id.startsWith("temp-") || bag.id.length < 10) {
-            await addDoc(collection(db, "produtos", editProduto.id, "bags"), {
-              pesoKg: bag.pesoKg,
-              status: bag.status,
-              criadoEm:
-                bag.criadoEm instanceof Date
-                  ? Timestamp.fromDate(bag.criadoEm)
-                  : bag.criadoEm,
-              produtoId: editProduto.id,
-            });
+          const dataToSave = {
+            pesoKg: bag.pesoKg,
+            status: bag.status,
+            criadoEm:
+              bag.criadoEm instanceof Date
+                ? Timestamp.fromDate(bag.criadoEm)
+                : bag.criadoEm,
+            produtoId: editProduto.id,
+            identificador: bag.identificador || "",
+          };
+
+          if (!bag.id || bag.id.startsWith("temp-") || bag.id.length < 5) {
+            await addDoc(collection(db, "produtos", editProduto.id, "bags"), dataToSave);
           } else {
-            await updateDoc(bagRef, {
-              pesoKg: bag.pesoKg,
-              status: bag.status,
-              criadoEm:
-                bag.criadoEm instanceof Date
-                  ? Timestamp.fromDate(bag.criadoEm)
-                  : bag.criadoEm,
-              produtoId: editProduto.id,
-            });
+            await updateDoc(bagRef, dataToSave);
           }
         })
       );
@@ -160,59 +229,48 @@ export default function Produtos() {
     }
   };
 
-  // Atualizar campo bag localmente
   const updateBagField = (id: string, field: keyof Omit<Bag, "id">, value: any) => {
     setEditingBags((prev) =>
-      prev.map((bag) =>
-        bag.id === id
-          ? {
-              ...bag,
-              [field]: value,
-              produtoId: bag.produtoId,
-            }
-          : bag
-      )
+      prev.map((bag) => (bag.id === id ? { ...bag, [field]: value } : bag))
     );
   };
 
-  // Adicionar bag nova no estado local
   const handleAddBag = () => {
     if (!editProduto) return;
-
     const novaBag: Bag = {
-      id: `temp-${Math.random().toString(36).substring(2, 9)}`,
+      id: `temp-${Date.now()}`,
       pesoKg: 0,
       status: "disponivel",
       criadoEm: new Date(),
       produtoId: editProduto.id,
+      identificador: "",
     };
     setEditingBags((prev) => [...prev, novaBag]);
   };
 
-  // Remover bag localmente e no firestore se já existe lá
   const handleRemoveBag = async (id: string) => {
     if (!editProduto) return;
-    const bagExisteNoFirestore = !id.startsWith("temp-") && !id.includes(".");
 
-    if (bagExisteNoFirestore) {
-      await deleteDoc(doc(db, "produtos", editProduto.id, "bags", id));
+    if (id && !id.startsWith("temp-") && id.length > 5) {
+      try {
+        await deleteDoc(doc(db, "produtos", editProduto.id, "bags", id));
+      } catch {
+        toast({ title: "Erro ao excluir bag", variant: "destructive" });
+      }
     }
 
     setEditingBags((prev) => prev.filter((b) => b.id !== id));
   };
 
-  // Filtrar produtos
   const produtosFiltrados = produtos.filter(
     (p) =>
       p.nomeProd.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.descricao?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Calcular estoque total
   const calcularEstoqueTotal = (bags: Bag[]) =>
     bags.reduce((acc, bag) => (bag.status === "disponivel" ? acc + bag.pesoKg : acc), 0);
 
-  // Cores para status das bags
   const statusColors: Record<Bag["status"], string> = {
     disponivel: "bg-green-200 text-green-800",
     reservado: "bg-gray-200 text-gray-800",
@@ -231,7 +289,6 @@ export default function Produtos() {
             <DialogHeader>
               <DialogTitle>Novo Produto</DialogTitle>
             </DialogHeader>
-            {/* Scroll para o form */}
             <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto">
               <div className="space-y-2">
                 <Label htmlFor="nome">Nome</Label>
@@ -308,11 +365,10 @@ export default function Produtos() {
         />
       </div>
 
-      {/* Lista produtos */}
+      {/* Lista de produtos */}
       <div className="grid gap-4">
         {produtosFiltrados.map((produto) => {
           const estoqueTotal = calcularEstoqueTotal(produto.bags);
-
           return (
             <Card
               key={produto.id}
@@ -327,9 +383,12 @@ export default function Produtos() {
                       Tipo: <strong>{produto.tipo}</strong>
                       <br />
                       Preço por KG:{" "}
-                      <strong>R$ {produto.precoPorKg.toFixed(2).replace(".", ",")}</strong>
+                      <strong>
+                        R$ {produto.precoPorKg.toFixed(2).replace(".", ",")}
+                      </strong>
                       <br />
-                      Estoque disponível: <strong>{estoqueTotal.toFixed(2)} KG</strong>
+                      Estoque disponível:{" "}
+                      <strong>{estoqueTotal.toFixed(2)} KG</strong>
                     </p>
                   </div>
                   <div className="flex gap-2 items-start">
@@ -354,16 +413,35 @@ export default function Produtos() {
                   <div className="mt-4">
                     <p className="text-sm font-medium mb-2">Bags disponíveis:</p>
                     <div className="grid grid-cols-2 gap-2 text-xs">
-                      {produto.bags.map((bag, index) => (
+                      {produto.bags.map((bag) => (
                         <div
                           key={bag.id}
-                          className={`flex justify-between items-center border rounded px-2 py-1 shadow-sm ${statusColors[bag.status]}`}
+                          className={`flex justify-between items-center border rounded px-2 py-1 shadow-sm ${
+                            statusColors[bag.status]
+                          }`}
                         >
-                          <span className="font-semibold">{`Bag ${String(index + 1).padStart(2, "0")}`}</span>
+                          <span className="font-semibold">{`Bag: ${
+                            bag.identificador || bag.id
+                          }`}</span>
                           <span>
                             {bag.pesoKg.toFixed(2)} KG -{" "}
                             <span className="capitalize">{bag.status}</span>
                           </span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              setEtiquetaSelecionada({
+                                identificador: bag.identificador || bag.id,
+                                descricao: produto.descricao || produto.nomeProd,
+                                pesoKg: bag.pesoKg,
+                                data: new Date(),
+                              })
+                            }
+                            className="ml-2"
+                          >
+                            Imprimir Etiqueta
+                          </Button>
                         </div>
                       ))}
                     </div>
@@ -375,7 +453,7 @@ export default function Produtos() {
         })}
       </div>
 
-      {/* Dialog edição produto + bags */}
+      {/* Modal edição */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent>
           <DialogHeader>
@@ -407,7 +485,10 @@ export default function Produtos() {
                   className="w-full border rounded px-3 py-2"
                   value={editProduto.tipo}
                   onChange={(e) =>
-                    setEditProduto({ ...editProduto, tipo: e.target.value as ProdutoModel["tipo"] })
+                    setEditProduto({
+                      ...editProduto,
+                      tipo: e.target.value as ProdutoModel["tipo"],
+                    })
                   }
                 >
                   <option value="moído">Moído</option>
@@ -422,20 +503,29 @@ export default function Produtos() {
                   step="0.01"
                   value={editProduto.precoPorKg}
                   onChange={(e) =>
-                    setEditProduto({ ...editProduto, precoPorKg: parseFloat(e.target.value) })
+                    setEditProduto({
+                      ...editProduto,
+                      precoPorKg: parseFloat(e.target.value),
+                    })
                   }
                 />
               </div>
 
-              {/* Edição bags */}
               <div className="space-y-2 mt-4">
                 <Label>Bags</Label>
                 {editingBags.map((bag, index) => (
                   <div
-                    key={bag.id}
+                    key={bag.id || index}
                     className={`flex gap-2 items-center ${statusColors[bag.status]} rounded p-2`}
                   >
-                    <span className="font-semibold min-w-[70px]">{`Bag ${String(index + 1).padStart(2, "0")}`}</span>
+                    <Input
+                      placeholder="Nº"
+                      value={bag.identificador || ""}
+                      onChange={(e) =>
+                        updateBagField(bag.id, "identificador", e.target.value)
+                      }
+                      className="w-24"
+                    />
                     <Input
                       type="number"
                       step="0.01"
@@ -478,6 +568,33 @@ export default function Produtos() {
                 <Button onClick={handleUpdateProduto}>Salvar</Button>
               </DialogFooter>
             </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Etiqueta */}
+      <Dialog open={!!etiquetaSelecionada} onOpenChange={() => setEtiquetaSelecionada(null)}>
+        <DialogContent>
+          {etiquetaSelecionada && (
+            <>
+            <p>Gerador de Etiquetas</p>
+              <div className="p-4 border rounded mb-4 bg-gray-50">
+                <p><strong>Descrição:</strong> {etiquetaSelecionada.descricao}</p>
+                <p><strong>Peso:</strong> {etiquetaSelecionada.pesoKg.toFixed(2).replace(".", ",")} KG</p>
+                <p><strong>Nº Bag:</strong> {etiquetaSelecionada.identificador}</p>
+                <p><strong>Data:</strong> {etiquetaSelecionada.data.toLocaleDateString("pt-BR")}</p>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setEtiquetaSelecionada(null)}>
+                  Fechar
+                </Button>
+                <Button onClick={() => {
+                  if (etiquetaSelecionada) gerarEtiquetaPDF(etiquetaSelecionada);
+                }}>
+                  Imprimir
+                </Button>
+              </div>
+            </>
           )}
         </DialogContent>
       </Dialog>
