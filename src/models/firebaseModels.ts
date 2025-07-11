@@ -66,6 +66,9 @@ export interface Pedido {
   vencimento?: Date;
   produtos: ProdutoNoPedido[];
   total: number;
+
+    // ✅ Adicione isso:
+  status: "pendente" | "processando" | "concluido" | "cancelado";
 }
 
 export interface ProdutoComBags extends Produto {

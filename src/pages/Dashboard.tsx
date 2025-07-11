@@ -1,152 +1,198 @@
-
-import { StatCard } from "@/components/StatCard";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+} from "recharts";
+import { useEffect, useState } from "react";
+import { db } from "@/lib/firebase";
+import {
+  collection,
+  getDocs,
+  Timestamp,
+} from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, Package, FileText, AlertTriangle, TrendingUp, DollarSign } from "lucide-react";
+import { AlertTriangle, FileText, Package, Users, DollarSign, Download } from "lucide-react";
+import { StatCard } from "@/components/StatCard";
+import { ProdutoComBags, Pedido, Cliente, Bag } from "@/models/firebaseModels";
+import { Button } from "@/components/ui/button";
+import Papa from "papaparse";
 
 export default function Dashboard() {
-  // Dados mockados para demonstração
-  const stats = [
-    {
-      title: "Total de Clientes",
-      value: "1,234",
-      description: "Clientes ativos",
-      icon: Users,
-      trend: { value: 12, isPositive: true }
-    },
-    {
-      title: "Produtos em Estoque",
-      value: "8,567",
-      description: "Itens disponíveis",
-      icon: Package,
-      trend: { value: -3, isPositive: false }
-    },
-    {
-      title: "Pedidos do Mês",
-      value: "456",
-      description: "Novos pedidos",
-      icon: FileText,
-      trend: { value: 18, isPositive: true }
-    },
-    {
-      title: "Estoque Baixo",
-      value: "23",
-      description: "Produtos com estoque baixo",
-      icon: AlertTriangle,
-    },
-    {
-      title: "Faturamento Mensal",
-      value: "R$ 145.780",
-      description: "Receita do mês atual",
-      icon: DollarSign,
-      trend: { value: 25, isPositive: true }
-    },
-    {
-      title: "Serviços Prestados",
-      value: "89",
-      description: "Serviços do mês",
-      icon: TrendingUp,
-      trend: { value: 8, isPositive: true }
-    }
-  ];
+  const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [produtos, setProdutos] = useState<ProdutoComBags[]>([]);
+  const [pedidos, setPedidos] = useState<Pedido[]>([]);
+  const [faturamentoPorMes, setFaturamentoPorMes] = useState<{ mes: string; total: number }[]>([]);
+  const [topBaixoEstoque, setTopBaixoEstoque] = useState<{ nomeProd: string; totalKg: number }[]>([]);
 
-  const recentOrders = [
-    { id: "PED-001", client: "Empresa ABC Ltda", value: "R$ 2.450,00", status: "Pendente", date: "2024-01-07" },
-    { id: "PED-002", client: "Indústria XYZ S/A", value: "R$ 1.280,00", status: "Processando", date: "2024-01-07" },
-    { id: "PED-003", client: "Comercial 123", value: "R$ 3.670,00", status: "Concluído", date: "2024-01-06" },
-    { id: "PED-004", client: "Distribuidora DEF", value: "R$ 890,00", status: "Concluído", date: "2024-01-06" },
-  ];
+  useEffect(() => {
+    const fetchData = async () => {
+      const [clientesSnap, produtosSnap, pedidosSnap] = await Promise.all([
+        getDocs(collection(db, "clientes")),
+        getDocs(collection(db, "produtos")),
+        getDocs(collection(db, "pedidos")),
+      ]);
 
-  const lowStockProducts = [
-    { name: "Material Moído Tipo A", current: 15, minimum: 50, category: "Material Moído" },
-    { name: "MCOLOR Verde", current: 8, minimum: 20, category: "MCOLOR" },
-    { name: "Produto Final XYZ", current: 32, minimum: 100, category: "Produto Final" },
-    { name: "Material Moído Tipo B", current: 12, minimum: 40, category: "Material Moído" },
-  ];
+      const clientesData: Cliente[] = clientesSnap.docs.map((doc) => ({
+        ...(doc.data() as Cliente),
+        id: doc.id,
+      }));
+      setClientes(clientesData);
+
+      const produtosData: ProdutoComBags[] = [];
+      for (const docSnap of produtosSnap.docs) {
+        const data = docSnap.data();
+        const bagsSnap = await getDocs(collection(db, `produtos/${docSnap.id}/bags`));
+        const bags: Bag[] = bagsSnap.docs.map((b) => ({
+          id: b.id,
+          produtoId: docSnap.id,
+          pesoKg: b.data().pesoKg,
+          status: b.data().status,
+          criadoEm: b.data().criadoEm?.toDate() ?? new Date(),
+        }));
+
+        produtosData.push({
+          id: docSnap.id,
+          nomeProd: data.nomeProd,
+          precoPorKg: data.precoPorKg,
+          tipo: data.tipo,
+          bags,
+        });
+      }
+      setProdutos(produtosData);
+
+      const pedidosData: Pedido[] = pedidosSnap.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          ...data,
+          id: doc.id,
+          criadoEm: data.criadoEm instanceof Timestamp ? data.criadoEm.toDate() : new Date(),
+        } as Pedido;
+      });
+      setPedidos(pedidosData);
+
+      // Faturamento por mês
+      const mesesMap = new Map<string, number>();
+      for (const pedido of pedidosData) {
+        const mes = pedido.criadoEm.toLocaleDateString("pt-BR", { month: "short", year: "numeric" });
+        mesesMap.set(mes, (mesesMap.get(mes) || 0) + pedido.total);
+      }
+      const faturamento = Array.from(mesesMap.entries()).map(([mes, total]) => ({ mes, total }));
+      faturamento.sort((a, b) => new Date(`1 ${a.mes}`) > new Date(`1 ${b.mes}`) ? 1 : -1);
+      setFaturamentoPorMes(faturamento);
+
+      // Top 5 com menor estoque
+      const produtosOrdenados = produtosData
+        .map((p) => ({
+          nomeProd: p.nomeProd,
+          totalKg: p.bags.filter((b) => b.status === "disponivel").reduce((acc, b) => acc + b.pesoKg, 0),
+        }))
+        .sort((a, b) => a.totalKg - b.totalKg)
+        .slice(0, 5);
+      setTopBaixoEstoque(produtosOrdenados);
+    };
+
+    fetchData();
+  }, []);
+
+  const exportarCSV = () => {
+    const data = pedidos.map((p) => ({
+      ID: p.id,
+      Cliente: p.clienteNome,
+      "Data Pedido": p.criadoEm.toLocaleDateString("pt-BR"),
+      Total: p.total.toFixed(2),
+      Status: p.status,
+    }));
+
+    const csv = Papa.unparse(data);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", "pedidos.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
-    <div className="flex-1 space-y-6 p-6">
-      <div className="flex items-center justify-between">
+    <div className="p-6 space-y-6">
+      <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground">
-            Visão geral do sistema MONDINI
-          </p>
+          <h1 className="text-3xl font-bold">Dashboard</h1>
+          <p className="text-muted-foreground">Visão geral do sistema MONDINI</p>
         </div>
+        <Button variant="outline" onClick={exportarCSV}>
+          <Download className="w-4 h-4 mr-2" />
+          Exportar Pedidos
+        </Button>
       </div>
 
-      {/* Estatísticas principais */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {stats.map((stat, index) => (
-          <StatCard key={index} {...stat} />
-        ))}
+      {/* Cards de estatísticas: tudo em uma linha */}
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-5">
+        <StatCard title="Total de Clientes" value={clientes.length.toString()} icon={Users} />
+        <StatCard title="Produtos em Estoque" value={produtos.length.toString()} icon={Package} />
+        <StatCard title="Pedidos do Mês" value={pedidos.length.toString()} icon={FileText} />
+        <StatCard title="Estoque Baixo" value={topBaixoEstoque.length.toString()} icon={AlertTriangle} />
+        <StatCard
+          title="Faturamento Total"
+          value={`R$ ${pedidos.reduce((acc, p) => acc + p.total, 0).toLocaleString("pt-BR", {
+            minimumFractionDigits: 2,
+          })}`}
+          icon={DollarSign}
+        />
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Pedidos Recentes */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Pedidos Recentes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {recentOrders.map((order) => (
-                <div key={order.id} className="flex items-center justify-between p-3 border rounded-lg">
-                  <div className="space-y-1">
-                    <p className="font-medium">{order.id}</p>
-                    <p className="text-sm text-muted-foreground">{order.client}</p>
-                    <p className="text-xs text-muted-foreground">{order.date}</p>
-                  </div>
-                  <div className="text-right space-y-1">
-                    <p className="font-medium">{order.value}</p>
-                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                      order.status === "Concluído" 
-                        ? "bg-green-100 text-green-800" 
-                        : order.status === "Processando"
-                        ? "bg-yellow-100 text-yellow-800"
-                        : "bg-red-100 text-red-800"
-                    }`}>
-                      {order.status}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+      {/* Gráfico de faturamento mensal com altura ajustada */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Faturamento Mensal</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={faturamentoPorMes}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="mes" />
+              <YAxis />
+              <Tooltip
+                formatter={(value: number) =>
+                  `R$ ${value.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
+                }
+              />
+              <Bar dataKey="total" fill="#2563eb" />
+            </BarChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
 
-        {/* Produtos com Estoque Baixo */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-amber-500" />
-              Estoque Baixo
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {lowStockProducts.map((product, index) => (
-                <div key={index} className="space-y-2 p-3 border rounded-lg bg-amber-50">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-medium text-sm">{product.name}</p>
-                      <p className="text-xs text-muted-foreground">{product.category}</p>
-                    </div>
-                    <span className="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded">
-                      {product.current} / {product.minimum}
-                    </span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div 
-                      className="bg-amber-600 h-2 rounded-full" 
-                      style={{ width: `${(product.current / product.minimum) * 100}%` }}
-                    ></div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      {/* Top 5 Produtos com Menor Estoque */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-amber-500" />
+            Top 5 Produtos com Menor Estoque
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {topBaixoEstoque.map((item, index) => (
+              <div
+                key={index}
+                className="p-3 border rounded-md bg-amber-50 flex justify-between items-center"
+              >
+                <p className="font-medium">{item.nomeProd}</p>
+                <span className="text-sm font-semibold text-red-600">
+                  {item.totalKg.toFixed(2)} kg
+                </span>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
