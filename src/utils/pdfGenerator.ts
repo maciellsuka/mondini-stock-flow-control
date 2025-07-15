@@ -28,6 +28,32 @@ export const generatePedidoPDF = async (pedido: Pedido) => {
   const clienteSnap = await getDoc(clienteRef);
   const cliente = clienteSnap.exists() ? clienteSnap.data() : null;
 
+  // Aqui vamos montar um mapa { bagId -> identificador } pra usar no PDF
+  const identificadoresBags: Record<string, string> = {};
+
+  // Buscar o identificador de cada bag usada no pedido
+  for (const item of pedido.itens) {
+    for (const bagUso of item.bagsUsadas) {
+      // Só buscar se ainda não buscou essa bagId
+      if (!identificadoresBags[bagUso.bagId]) {
+        try {
+          // A bag fica na subcoleção "bags" do produto
+          const bagRef = doc(db, "produtos", item.produtoId, "bags", bagUso.bagId);
+          const bagSnap = await getDoc(bagRef);
+          if (bagSnap.exists()) {
+            const bagData = bagSnap.data();
+            identificadoresBags[bagUso.bagId] = bagData.identificador || bagUso.bagId;
+          } else {
+            // Se não achar, usa bagId mesmo
+            identificadoresBags[bagUso.bagId] = bagUso.bagId;
+          }
+        } catch {
+          identificadoresBags[bagUso.bagId] = bagUso.bagId;
+        }
+      }
+    }
+  }
+
   const printWindow = window.open("", "_blank");
   if (!printWindow) {
     alert("Por favor, permita pop-ups para gerar o PDF");
@@ -118,9 +144,7 @@ export const generatePedidoPDF = async (pedido: Pedido) => {
           </tr>
           <tr>
             <th>CNPJ</th>
-            <td>${cliente.cnpj}</td>
-            <th>IE</th>
-            <td>${cliente.inscricao || "-"}</td>
+            <td colspan="3">${cliente.cnpj}</td>
           </tr>`
             : ""
         }
@@ -137,16 +161,31 @@ export const generatePedidoPDF = async (pedido: Pedido) => {
         </thead>
         <tbody>
           ${pedido.itens
-            .map(
-              (item) => `
-              <tr>
-                <td>${item.quantidade.toFixed(2)}</td>
-                <td>${item.produtoNome}</td>
-                <td>R$ ${item.precoUnitario.toFixed(2)}</td>
-                <td>R$ ${item.subtotal.toFixed(2)}</td>
-              </tr>
-            `,
-            )
+            .map((item) => {
+              const itemHtml = `
+                <tr>
+                  <td>${item.quantidade.toFixed(2)}</td>
+                  <td>${item.produtoNome}</td>
+                  <td>R$ ${item.precoUnitario.toFixed(2)}</td>
+                  <td>R$ ${item.subtotal.toFixed(2)}</td>
+                </tr>
+              `;
+
+              // Aqui usamos o identificador buscado no Firestore
+              const bagsHtml = item.bagsUsadas
+                .map(
+                  (bag) => `
+                  <tr style="font-size: 12px; color: #555;">
+                    <td colspan="4" style="padding-left: 24px;">
+                      ↳ Bag <strong>${identificadoresBags[bag.bagId]}</strong> — ${bag.pesoUsado.toFixed(2)} kg
+                    </td>
+                  </tr>
+                `
+                )
+                .join("");
+
+              return itemHtml + bagsHtml;
+            })
             .join("")}
           <tr class="total">
             <td colspan="3">TOTAL GERAL</td>
