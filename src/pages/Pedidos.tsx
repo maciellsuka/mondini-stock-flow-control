@@ -398,7 +398,6 @@ export default function Pedidos() {
           const novoPeso = bagAtual.pesoKg - bagUso.pesoUsado;
 
           await updateDoc(bagRef, {
-            pesoKg: novoPeso > 0 ? novoPeso : 0,
             status: novoPeso <= 0 ? "vendido" : "disponivel",
           });
         }
@@ -639,8 +638,8 @@ export default function Pedidos() {
                         <TableRow key={item.id}>
                           <TableCell>{item.produtoNome}</TableCell>
                           <TableCell>{item.quantidade.toFixed(2)}</TableCell>
-                          <TableCell>R$ {item.precoUnitario.toFixed(2)}</TableCell>
-                          <TableCell>R$ {item.subtotal.toFixed(2)}</TableCell>
+                          <TableCell>R$ {item.precoUnitario.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                          <TableCell>R$ {item.subtotal.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
                           <TableCell className="text-right">
                             <Button
                               variant="outline"
@@ -657,7 +656,7 @@ export default function Pedidos() {
                           Total
                         </TableCell>
                         <TableCell className="font-bold">
-                          R$ {calcularTotal().toFixed(2)}
+                          R$ {calcularTotal().toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </TableCell>
                         <TableCell />
                       </TableRow>
@@ -732,7 +731,9 @@ export default function Pedidos() {
                         {pedido.status.charAt(0).toUpperCase() + pedido.status.slice(1)}
                       </Badge>
                     </TableCell>
-                    <TableCell>R$ {pedido.total.toFixed(2)}</TableCell>
+                    <TableCell>
+                      R$ {pedido.total.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </TableCell>
                     <TableCell className="text-right flex gap-2 justify-end">
                       <Button
                         variant="outline"

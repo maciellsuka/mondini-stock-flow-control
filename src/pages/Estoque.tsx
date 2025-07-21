@@ -31,11 +31,12 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
-import { Produto, Bag, ProdutoComBags } from "@/models/firebaseModels";
+import { ProdutoComBags, Bag } from "@/models/firebaseModels";
 
 export default function Estoque() {
   const [produtos, setProdutos] = useState<ProdutoComBags[]>([]);
   const [produtoSelecionado, setProdutoSelecionado] = useState<ProdutoComBags | null>(null);
+  const [mostrarVendidas, setMostrarVendidas] = useState(false); // indica se modal mostra vendido ou disponível
   const [bagEditando, setBagEditando] = useState<Bag | null>(null);
   const [pesoEdit, setPesoEdit] = useState("");
   const [statusEdit, setStatusEdit] = useState<Bag["status"]>("disponivel");
@@ -52,6 +53,7 @@ export default function Estoque() {
       const bags: Bag[] = bagsSnap.docs.map((bagDoc) => ({
         id: bagDoc.id,
         produtoId: docSnap.id,
+        identificador: bagDoc.data().identificador,
         pesoKg: bagDoc.data().pesoKg,
         status: bagDoc.data().status,
         criadoEm: bagDoc.data().criadoEm?.toDate() ?? new Date(),
@@ -62,6 +64,7 @@ export default function Estoque() {
         nomeProd: data.nomeProd,
         precoPorKg: data.precoPorKg,
         bags,
+        tipo: data.tipo,
       });
     }
 
@@ -100,113 +103,251 @@ export default function Estoque() {
     setBagEditando(null);
   };
 
+  // Função para abrir modal com filtro de bags por status
+  const abrirModal = (produto: ProdutoComBags, vendido: boolean) => {
+    setProdutoSelecionado(produto);
+    setMostrarVendidas(vendido);
+    setBagEditando(null);
+  };
+
+  // Filtra produtos com bags disponíveis (disponivel ou reservado)
+  const produtosDisponiveis = produtos.filter((p) =>
+    p.bags.some((b) => b.status === "disponivel" || b.status === "reservado")
+  );
+
+  // Filtra produtos com bags vendidas
+  const produtosVendidos = produtos.filter((p) =>
+    p.bags.some((b) => b.status === "vendido")
+  );
+
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-8">
       <h1 className="text-3xl font-bold text-gray-900">Estoque</h1>
       <p className="text-gray-500">Visualize os produtos e suas bags em estoque</p>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {produtos.map((produto) => {
-          const totalDisponivel = produto.bags
-            .filter((b) => b.status === "disponivel")
-            .reduce((acc, b) => acc + b.pesoKg, 0);
+      {/* Estoque Disponível */}
+      <section>
+        <h2 className="text-2xl font-semibold mb-4">Estoque Disponível</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {produtosDisponiveis.map((produto) => {
+            const bagsDisponiveis = produto.bags.filter(
+              (b) => b.status === "disponivel" || b.status === "reservado"
+            );
+            const totalDisponivel = bagsDisponiveis.reduce((acc, b) => acc + b.pesoKg, 0);
 
-          const isLowStock = totalDisponivel < 10;
+            const isLowStock = totalDisponivel < 10;
 
-          return (
-            <Dialog key={produto.id}>
-              <DialogTrigger asChild>
-                <Card
-                  onClick={() => setProdutoSelecionado(produto)}
-                  className={`cursor-pointer transition hover:shadow-md ${
-                    isLowStock ? "border-red-500 border-2" : ""
-                  }`}
-                >
-                  <CardHeader>
-                    <CardTitle>{produto.nomeProd}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-gray-600">
-                      Preço: <strong>R$ {produto.precoPorKg.toFixed(2)}/kg</strong>
-                    </p>
-                    <p className={`text-sm ${isLowStock ? "text-red-600" : "text-gray-600"}`}>
-                      Estoque disponível:{" "}
-                      <strong>{totalDisponivel.toFixed(2)} kg</strong>
-                    </p>
-                    <p className="text-xs text-gray-400 mt-1">
-                      Total de bags: {produto.bags.length}
-                    </p>
-                  </CardContent>
-                </Card>
-              </DialogTrigger>
-              <DialogContent className="max-w-3xl">
-                <DialogHeader>
-                  <DialogTitle>{produto.nomeProd} - Detalhes das Bags</DialogTitle>
-                </DialogHeader>
+            return (
+              <Dialog key={produto.id}>
+                <DialogTrigger asChild>
+                  <Card
+                    onClick={() => abrirModal(produto, false)}
+                    className={`cursor-pointer transition hover:shadow-md ${
+                      isLowStock ? "border-red-500 border-2" : ""
+                    }`}
+                  >
+                    <CardHeader>
+                      <CardTitle>{produto.nomeProd}</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-sm text-gray-600">
+                        Preço: <strong>R$ {produto.precoPorKg.toFixed(2)}/kg</strong>
+                      </p>
+                      <p className={`text-sm ${isLowStock ? "text-red-600" : "text-gray-600"}`}>
+                        Estoque disponível: <strong>{totalDisponivel.toFixed(2)} kg</strong>
+                      </p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        Total de bags: {bagsDisponiveis.length}
+                      </p>
+                    </CardContent>
+                  </Card>
+                </DialogTrigger>
 
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>ID</TableHead>
-                      <TableHead>Peso (kg)</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Criada em</TableHead>
-                      <TableHead>Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {produtoSelecionado?.bags.map((bag) => (
-                      <TableRow key={bag.id}>
-                        <TableCell>{bag.id}</TableCell>
-                        <TableCell>{bag.pesoKg.toFixed(2)}</TableCell>
-                        <TableCell>{getStatusBadge(bag.status)}</TableCell>
-                        <TableCell>{new Date(bag.criadoEm).toLocaleDateString()}</TableCell>
-                        <TableCell>
-                          <Button variant="outline" size="sm" onClick={() => editarBag(bag)}>
-                            Editar
-                          </Button>
-                        </TableCell>
+                <DialogContent className="max-w-3xl max-h-[600px] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>{produto.nomeProd} - Bags Disponíveis</DialogTitle>
+                  </DialogHeader>
+
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Identificador</TableHead>
+                        <TableHead>Peso (kg)</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Criada em</TableHead>
+                        <TableHead>Ações</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {produtoSelecionado &&
+                        produtoSelecionado.bags
+                          .filter(
+                            (bag) =>
+                              (bag.status === "disponivel" || bag.status === "reservado") &&
+                              bag.produtoId === produtoSelecionado.id
+                          )
+                          .map((bag) => (
+                            <TableRow key={bag.identificador}>
+                              <TableCell>{bag.identificador}</TableCell>
+                              <TableCell>{bag.pesoKg.toFixed(2)}</TableCell>
+                              <TableCell>{getStatusBadge(bag.status)}</TableCell>
+                              <TableCell>{new Date(bag.criadoEm).toLocaleDateString()}</TableCell>
+                              <TableCell>
+                                <Button variant="outline" size="sm" onClick={() => editarBag(bag)}>
+                                  Editar
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                    </TableBody>
+                  </Table>
 
-                {bagEditando && (
-                  <div className="mt-6 space-y-4 border-t pt-4">
-                    <h3 className="font-semibold text-gray-700">Editando Bag: {bagEditando.id}</h3>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-sm text-gray-600">Peso (kg)</label>
-                        <Input
-                          type="number"
-                          value={pesoEdit}
-                          onChange={(e) => setPesoEdit(e.target.value)}
-                        />
+                  {bagEditando && (
+                    <div className="mt-6 space-y-4 border-t pt-4">
+                      <h3 className="font-semibold text-gray-700">Editando Bag: {bagEditando.id}</h3>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-sm text-gray-600">Peso (kg)</label>
+                          <Input
+                            type="number"
+                            value={pesoEdit}
+                            onChange={(e) => setPesoEdit(e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-sm text-gray-600">Status</label>
+                          <select
+                            value={statusEdit}
+                            onChange={(e) => setStatusEdit(e.target.value as Bag["status"])}
+                            className="w-full border rounded px-3 py-2 text-sm"
+                          >
+                            <option value="disponivel">Disponível</option>
+                            <option value="reservado">Reservado</option>
+                            <option value="vendido">Vendido</option>
+                          </select>
+                        </div>
                       </div>
-                      <div>
-                        <label className="text-sm text-gray-600">Status</label>
-                        <select
-                          value={statusEdit}
-                          onChange={(e) => setStatusEdit(e.target.value as Bag["status"])}
-                          className="w-full border rounded px-3 py-2 text-sm"
-                        >
-                          <option value="disponivel">Disponível</option>
-                          <option value="reservado">Reservado</option>
-                          <option value="vendido">Vendido</option>
-                        </select>
+                      <div className="flex justify-end gap-2">
+                        <Button variant="ghost" onClick={() => setBagEditando(null)}>
+                          Cancelar
+                        </Button>
+                        <Button onClick={salvarBag}>Salvar</Button>
                       </div>
                     </div>
-                    <div className="flex justify-end gap-2">
-                      <Button variant="ghost" onClick={() => setBagEditando(null)}>Cancelar</Button>
-                      <Button onClick={salvarBag}>Salvar</Button>
+                  )}
+                </DialogContent>
+              </Dialog>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* Bags Vendidas */}
+      <section>
+        <h2 className="text-2xl font-semibold mt-10 mb-4">Bags Vendidas</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {produtosVendidos.map((produto) => {
+            const bagsVendidas = produto.bags.filter((b) => b.status === "vendido");
+            const totalVendido = bagsVendidas.reduce((acc, b) => acc + b.pesoKg, 0);
+
+            return (
+              <Dialog key={produto.id}>
+                <DialogTrigger asChild>
+                  <Card
+                    onClick={() => abrirModal(produto, true)}
+                    className="cursor-pointer transition hover:shadow-md border border-gray-300"
+                  >
+                    <CardHeader>
+                      <CardTitle>{produto.nomeProd}</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-sm text-gray-600">
+                        Preço: <strong>R$ {produto.precoPorKg.toFixed(2)}/kg</strong>
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        Total vendido: <strong>{totalVendido.toFixed(2)} kg</strong>
+                      </p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        Total de bags: {bagsVendidas.length}
+                      </p>
+                    </CardContent>
+                  </Card>
+                </DialogTrigger>
+
+                <DialogContent className="max-w-3xl max-h-[600px] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>{produto.nomeProd} - Bags Vendidas</DialogTitle>
+                  </DialogHeader>
+
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Identificador</TableHead>
+                        <TableHead>Peso (kg)</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Criada em</TableHead>
+                        <TableHead>Ações</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {produtoSelecionado &&
+                        produtoSelecionado.bags
+                          .filter((bag) => bag.status === "vendido" && bag.produtoId === produtoSelecionado.id)
+                          .map((bag) => (
+                            <TableRow key={bag.identificador}>
+                              <TableCell>{bag.identificador}</TableCell>
+                              <TableCell>{bag.pesoKg.toFixed(2)}</TableCell>
+                              <TableCell>{getStatusBadge(bag.status)}</TableCell>
+                              <TableCell>{new Date(bag.criadoEm).toLocaleDateString()}</TableCell>
+                              <TableCell>
+                                <Button variant="outline" size="sm" onClick={() => editarBag(bag)}>
+                                  Editar
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                    </TableBody>
+                  </Table>
+
+                  {bagEditando && (
+                    <div className="mt-6 space-y-4 border-t pt-4">
+                      <h3 className="font-semibold text-gray-700">Editando Bag: {bagEditando.id}</h3>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-sm text-gray-600">Peso (kg)</label>
+                          <Input
+                            type="number"
+                            value={pesoEdit}
+                            onChange={(e) => setPesoEdit(e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-sm text-gray-600">Status</label>
+                          <select
+                            value={statusEdit}
+                            onChange={(e) => setStatusEdit(e.target.value as Bag["status"])}
+                            className="w-full border rounded px-3 py-2 text-sm"
+                          >
+                            <option value="disponivel">Disponível</option>
+                            <option value="reservado">Reservado</option>
+                            <option value="vendido">Vendido</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        <Button variant="ghost" onClick={() => setBagEditando(null)}>
+                          Cancelar
+                        </Button>
+                        <Button onClick={salvarBag}>Salvar</Button>
+                      </div>
                     </div>
-                  </div>
-                )}
-              </DialogContent>
-            </Dialog>
-          );
-        })}
-      </div>
+                  )}
+                </DialogContent>
+              </Dialog>
+            );
+          })}
+        </div>
+      </section>
     </div>
   );
 }
