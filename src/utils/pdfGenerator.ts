@@ -141,16 +141,65 @@ export const generatePedidoPDF = async (pedido: Pedido) => {
         <meta charset="UTF-8" />
         <title>Pedido #${pedido.id} - Duas Vias</title>
         <style>
-          body { font-family: Arial, sans-serif; padding:16px; font-size:13px; color:#333; }
-          .header { text-align:center; margin-bottom:8px; }
-          .header img { max-width:150px; }
-          table { width:100%; border-collapse:collapse; margin:6px 0 14px; }
-          th, td { border:1px solid #ccc; padding:6px 8px; font-size:13px; }
-          th { background:#f1f1f1; text-align:left; }
-          .total { font-weight:bold; background:#f1f1f1; }
-          .via { page-break-inside:avoid; margin-bottom:30px; }
-          .corte { border-top:2px dashed #999; margin:28px 0; }
-          .footer { font-size:11px; text-align:center; color:#666; margin-top:22px; border-top:1px solid #ccc; padding-top:8px; }
+          body {
+            font-family: Arial, sans-serif;
+            padding: 16px;
+            font-size: 13px;
+            color: #333;
+          }
+          .header {
+            text-align: center;
+            margin-bottom: 8px;
+          }
+          .header img {
+            max-width: 150px;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 6px 0 14px;
+          }
+          th, td {
+            border: 1px solid #ccc;
+            padding: 6px 8px;
+            font-size: 13px;
+          }
+          th {
+            background: #e0e0e0;
+            color: #333;
+            font-weight: bold;
+            text-align: left;
+          }
+          .total {
+            font-weight: bold;
+            background: #f1f1f1;
+          }
+          .via {
+            page-break-inside: avoid;
+            margin-bottom: 30px;
+          }
+          .corte {
+            border-top: 2px dashed #999;
+            margin: 28px 0;
+          }
+          .footer {
+            font-size: 11px;
+            text-align: center;
+            color: #666;
+            margin-top: 22px;
+            border-top: 1px solid #ccc;
+            padding-top: 8px;
+          }
+
+          /* 🔶 Força a impressão aplicar os estilos corretamente */
+          @media print {
+            th {
+              background: #e0e0e0 !important;
+              color: #333 !important;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+          }
         </style>
       </head>
       <body>

@@ -135,7 +135,13 @@ export default function Produtos() {
           pesoKg: b.data().pesoKg || 0,
         }));
 
-        produtosData.push({ ...produto, id: docSnap.id, bags });
+        const bagsVisiveis = bags.filter(
+          (b) => b.status === "disponivel" || b.status === "reservado"
+        );
+
+        if (bagsVisiveis.length > 0) {
+          produtosData.push({ ...produto, id: docSnap.id, bags: bagsVisiveis });
+        }
       }
 
       setProdutos(produtosData);
