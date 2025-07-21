@@ -26,6 +26,7 @@ const navigation = [
     title: "Dashboard",
     url: "/",
     icon: Home,
+    disabled: false,
   },
   {
     title: "Clientes",
@@ -46,12 +47,6 @@ const navigation = [
     title: "Pedidos",
     url: "/pedidos",
     icon: FileText,
-  },
-  {
-    title: "Relatórios",
-    url: "/relatorios",
-    icon: BarChart3,
-    disabled: true,
   },
 ];
 

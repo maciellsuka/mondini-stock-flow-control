@@ -21,6 +21,7 @@ interface Pedido {
   itens: ItemPedido[];
   total: number;
   observacoes?: string;
+  numeroPedido?: string;
 }
 
 export const generatePedidoPDF = async (pedido: Pedido) => {
@@ -28,23 +29,18 @@ export const generatePedidoPDF = async (pedido: Pedido) => {
   const clienteSnap = await getDoc(clienteRef);
   const cliente = clienteSnap.exists() ? clienteSnap.data() : null;
 
-  // Aqui vamos montar um mapa { bagId -> identificador } pra usar no PDF
   const identificadoresBags: Record<string, string> = {};
 
-  // Buscar o identificador de cada bag usada no pedido
   for (const item of pedido.itens) {
     for (const bagUso of item.bagsUsadas) {
-      // Só buscar se ainda não buscou essa bagId
       if (!identificadoresBags[bagUso.bagId]) {
         try {
-          // A bag fica na subcoleção "bags" do produto
           const bagRef = doc(db, "produtos", item.produtoId, "bags", bagUso.bagId);
           const bagSnap = await getDoc(bagRef);
           if (bagSnap.exists()) {
             const bagData = bagSnap.data();
             identificadoresBags[bagUso.bagId] = bagData.identificador || bagUso.bagId;
           } else {
-            // Se não achar, usa bagId mesmo
             identificadoresBags[bagUso.bagId] = bagUso.bagId;
           }
         } catch {
@@ -54,72 +50,19 @@ export const generatePedidoPDF = async (pedido: Pedido) => {
     }
   }
 
-  const printWindow = window.open("", "_blank");
-  if (!printWindow) {
-    alert("Por favor, permita pop-ups para gerar o PDF");
-    return;
-  }
+  // Função para montar o conteúdo HTML da via
+  const montarVia = (tituloVia: string) => `
+    <div class="via">
+      <h2>${tituloVia}</h2>
 
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8" />
-      <title>Pedido #${pedido.id}</title>
-      <style>
-        body {
-          font-family: Arial, sans-serif;
-          padding: 20px;
-          color: #333;
-        }
-        .header {
-          text-align: center;
-          margin-bottom: 20px;
-        }
-        .header img {
-          max-width: 180px;
-        }
-        h2 {
-          margin: 10px 0;
-        }
-        table {
-          width: 100%;
-          border-collapse: collapse;
-          margin-top: 16px;
-          margin-bottom: 24px;
-        }
-        th, td {
-          border: 1px solid #ccc;
-          padding: 8px 12px;
-          font-size: 14px;
-        }
-        th {
-          background-color: #f1f1f1;
-          text-align: left;
-        }
-        .total {
-          font-weight: bold;
-          background-color: #f1f1f1;
-        }
-        .footer {
-          font-size: 12px;
-          text-align: center;
-          color: #666;
-          margin-top: 40px;
-          border-top: 1px solid #ccc;
-          padding-top: 12px;
-        }
-      </style>
-    </head>
-    <body>
       <div class="header">
-        <img src="/assets/Logo-Mondini-DGbuvNVK.png" alt="Logo Mondini" style="max-width: 180px; margin: 0 auto;" />
+        <img src="/assets/Logo-Mondini-DGbuvNVK.png" alt="Logo Mondini" />
       </div>
 
       <table>
         <tr>
           <th>Pedido nro.</th>
-          <td>${pedido.id}</td>
+          <td>${pedido.numeroPedido}</td>
           <th>Emissão</th>
           <td>${new Date(pedido.dataPedido).toLocaleDateString("pt-BR")}</td>
         </tr>
@@ -171,7 +114,6 @@ export const generatePedidoPDF = async (pedido: Pedido) => {
                 </tr>
               `;
 
-              // Aqui usamos o identificador buscado no Firestore
               const bagsHtml = item.bagsUsadas
                 .map(
                   (bag) => `
@@ -199,6 +141,81 @@ export const generatePedidoPDF = async (pedido: Pedido) => {
           ? `<div><strong>Observações:</strong> ${pedido.observacoes}</div>`
           : ""
       }
+    </div>
+  `;
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8" />
+      <title>Pedido #${pedido.id} - Duas Vias</title>
+      <style>
+        body {
+          font-family: Arial, sans-serif;
+          padding: 20px;
+          color: #333;
+        }
+        h2 {
+          text-align: center;
+          margin-bottom: 12px;
+          text-transform: uppercase;
+          color: #222;
+        }
+        .header {
+          text-align: center;
+          margin-bottom: 10px;
+        }
+        .header img {
+          max-width: 180px;
+        }
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-top: 8px;
+          margin-bottom: 16px;
+        }
+        th, td {
+          border: 1px solid #ccc;
+          padding: 6px 10px;
+          font-size: 13px;
+        }
+        th {
+          background-color: #f1f1f1;
+          text-align: left;
+        }
+        .total {
+          font-weight: bold;
+          background-color: #f1f1f1;
+        }
+        .footer {
+          font-size: 11px;
+          text-align: center;
+          color: #666;
+          margin-top: 32px;
+          border-top: 1px solid #ccc;
+          padding-top: 8px;
+        }
+
+        /* Cada via terá uma margem para separar visualmente */
+        .via {
+          page-break-inside: avoid;
+          margin-bottom: 40px;
+        }
+
+        /* Linha pontilhada para corte entre vias */
+        .corte {
+          border-top: 2px dashed #999;
+          margin: 40px 0;
+        }
+      </style>
+    </head>
+    <body>
+      ${montarVia("Via do Usuário (Vendedor)")}
+      
+      <div class="corte"></div>
+      
+      ${montarVia("Via do Cliente")}
 
       <div class="footer">
         Documento gerado em ${new Date().toLocaleDateString("pt-BR")} às ${new Date().toLocaleTimeString("pt-BR")}<br />
@@ -208,6 +225,12 @@ export const generatePedidoPDF = async (pedido: Pedido) => {
     </body>
     </html>
   `;
+
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) {
+    alert("Por favor, permita pop-ups para gerar o PDF");
+    return;
+  }
 
   printWindow.document.write(html);
   printWindow.document.close();

@@ -101,6 +101,7 @@ interface Pedido {
   itens: ItemPedido[];
   total: number;
   observacoes?: string;
+  numeroPedido?: string;
 }
 
 export default function Pedidos() {
@@ -119,6 +120,7 @@ export default function Pedidos() {
     dataEntrega: "",
     status: "pendente" as StatusPedido,
     observacoes: "",
+    numeroPedido: "",
   });
 
   const [itens, setItens] = useState<ItemPedido[]>([]);
@@ -192,6 +194,7 @@ export default function Pedidos() {
         itens: d.itens,
         total: d.total,
         observacoes: d.observacoes || "",
+        numeroPedido: d.numeroPedido || "",
       };
     });
     setPedidos(pedidosData);
@@ -210,6 +213,7 @@ export default function Pedidos() {
       dataEntrega: "",
       status: "pendente",
       observacoes: "",
+      numeroPedido: "",
     });
     setItens([]);
     setNovoItemProdutoId("");
@@ -239,9 +243,19 @@ export default function Pedidos() {
   // Função pra atualizar a seleção e peso das bags no novo item
   const toggleBagSelecionada = (bagId: string) => {
     setBagsSelecionadas((prev) =>
-      prev.map((bag) =>
-        bag.bagId === bagId ? { ...bag, selecionada: !bag.selecionada } : bag,
-      ),
+      prev.map((bag) => {
+        if (bag.bagId === bagId) {
+          const produto = produtos.find((p) => p.id === novoItemProdutoId);
+          const bagInfo = produto?.bags.find((b) => b.id === bagId);
+          const pesoOriginal = bagInfo?.pesoKg ?? 0;
+          return {
+            ...bag,
+            selecionada: !bag.selecionada,
+            pesoUsado: !bag.selecionada ? pesoOriginal : 0,
+          };
+        }
+        return bag;
+      }),
     );
   };
 
@@ -400,6 +414,7 @@ export default function Pedidos() {
         itens,
         total: calcularTotal(),
         observacoes: formData.observacoes,
+        numeroPedido: formData.numeroPedido || undefined,
       };
 
       if (editingPedido) {
@@ -431,6 +446,7 @@ export default function Pedidos() {
       dataEntrega: pedido.dataEntrega || "",
       status: pedido.status,
       observacoes: pedido.observacoes || "",
+      numeroPedido: pedido.numeroPedido || "",
     });
     setItens(pedido.itens);
     setIsDialogOpen(true);
@@ -480,6 +496,15 @@ export default function Pedidos() {
                     type="date"
                     value={formData.dataEntrega}
                     onChange={(e) => setFormData({ ...formData, dataEntrega: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="numeroPedido">Número do Pedido</Label>
+                  <Input
+                    type="text"
+                    placeholder="Ex: 2025-001"
+                    value={formData.numeroPedido}
+                    onChange={(e) => setFormData({ ...formData, numeroPedido: e.target.value })}
                   />
                 </div>
                 <div className="space-y-2">
@@ -575,22 +600,6 @@ export default function Pedidos() {
                             <label htmlFor={`checkbox-${bag.bagId}`} className="flex-1">
                               Bag #{bagInfo?.identificador || bag.bagId} - Estoque: {bagInfo?.pesoKg.toFixed(2)} kg
                             </label>
-                            <Input
-                              type="number"
-                              min={0}
-                              step={0.01}
-                              disabled={!bag.selecionada}
-                              value={bag.pesoUsado === 0 ? "" : bag.pesoUsado}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                atualizarPesoBag(
-                                  bag.bagId,
-                                  val === "" ? 0 : parseFloat(val),
-                                );
-                              }}
-                              placeholder="Peso (kg)"
-                              className="w-24"
-                            />
                           </div>
                         );
                       })}
@@ -687,6 +696,7 @@ export default function Pedidos() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>Número</TableHead>
                 <TableHead>Cliente</TableHead>
                 <TableHead>Data Pedido</TableHead>
                 <TableHead>Data Entrega</TableHead>
@@ -708,6 +718,7 @@ export default function Pedidos() {
                 })
                 .map((pedido) => (
                   <TableRow key={pedido.id}>
+                    <TableCell>{pedido.numeroPedido}</TableCell>
                     <TableCell>{pedido.clienteNome}</TableCell>
                     <TableCell>{pedido.dataPedido}</TableCell>
                     <TableCell>{pedido.dataEntrega || "-"}</TableCell>
