@@ -134,14 +134,10 @@ export default function Produtos() {
           status: b.data().status || "disponivel",
           pesoKg: b.data().pesoKg || 0,
         }));
+        
+        const bagsVisiveis = bags.filter((b) => b.status !== "vendido");
+        produtosData.push({ ...produto, id: docSnap.id, bags: bagsVisiveis });
 
-        const bagsVisiveis = bags.filter(
-          (b) => b.status === "disponivel" || b.status === "reservado"
-        );
-
-        if (bagsVisiveis.length > 0) {
-          produtosData.push({ ...produto, id: docSnap.id, bags: bagsVisiveis });
-        }
       }
 
       setProdutos(produtosData);
