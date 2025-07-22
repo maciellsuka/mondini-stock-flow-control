@@ -22,6 +22,8 @@ interface Pedido {
   total: number;
   observacoes?: string;
   numeroPedido?: string;
+  formaPagamento?: string;
+  prazoPagamento?: string;
 }
 
 export const generatePedidoPDF = async (pedido: Pedido) => {
@@ -55,7 +57,7 @@ export const generatePedidoPDF = async (pedido: Pedido) => {
       <table>
         <tr>
           <th>Pedido nº</th>
-          <td>${pedido.numeroPedido}</td>
+          <td>${pedido.numeroPedido || "-"}</td>
           <th>Emissão</th>
           <td>${new Date(pedido.dataPedido).toLocaleDateString("pt-BR")}</td>
         </tr>
@@ -83,6 +85,21 @@ export const generatePedidoPDF = async (pedido: Pedido) => {
           <td colspan="3">${cliente.cnpj}</td>
         </tr>`
             : ""
+        }
+        ${
+          pedido.formaPagamento === "A prazo" && pedido.prazoPagamento
+            ? `
+        <tr>
+          <th>Forma de Pagamento</th>
+          <td>${pedido.formaPagamento}</td>
+          <th>Prazo de Pagamento</th>
+          <td>${pedido.prazoPagamento}</td>
+        </tr>`
+            : `
+        <tr>
+          <th>Forma de Pagamento</th>
+          <td colspan="3">${pedido.formaPagamento || "-"}</td>
+        </tr>`
         }
       </table>
 

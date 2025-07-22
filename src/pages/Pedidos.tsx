@@ -102,6 +102,8 @@ interface Pedido {
   total: number;
   observacoes?: string;
   numeroPedido?: string;
+  formaPagamento?: string;
+  prazoPagamento?: string; // Corrigido para existir
 }
 
 export default function Pedidos() {
@@ -115,26 +117,28 @@ export default function Pedidos() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPedido, setEditingPedido] = useState<Pedido | null>(null);
 
+  // Estado com prazoPagamento incluído para evitar erro de tipagem
   const [formData, setFormData] = useState({
     clienteId: "",
     dataEntrega: "",
     status: "pendente" as StatusPedido,
     observacoes: "",
     numeroPedido: "",
+    formaPagamento: "",
+    prazoPagamento: "",
   });
 
   const [itens, setItens] = useState<ItemPedido[]>([]);
 
-  // Novo state para controlar a seleção do produto no item e bags usadas MANUALMENTE
+  // Para seleção de novo item produto, quantidade e bags
   const [novoItemProdutoId, setNovoItemProdutoId] = useState<string>("");
   const [novoItemQuantidade, setNovoItemQuantidade] = useState<number>(0);
 
-  // Bags selecionadas para o novo item e o peso que será retirado manualmente
   const [bagsSelecionadas, setBagsSelecionadas] = useState<
     { bagId: string; pesoUsado: number; selecionada: boolean }[]
   >([]);
 
-  // ========== Fetch dados ==========
+  // === Fetch dados ===
 
   // Buscar clientes do Firestore
   const fetchClientes = async () => {
@@ -147,7 +151,7 @@ export default function Pedidos() {
     setClientes(clientesData);
   };
 
-  // Buscar produtos com bags do Firestore
+  // Buscar produtos com bags
   const fetchProdutos = async () => {
     const produtosCol = collection(db, "produtos");
     const snapshotProdutos = await getDocs(produtosCol);
@@ -155,7 +159,6 @@ export default function Pedidos() {
 
     for (const prodDoc of snapshotProdutos.docs) {
       const prodData = prodDoc.data();
-      // Buscar bags subcoleção
       const bagsCol = collection(db, `produtos/${prodDoc.id}/bags`);
       const bagsSnap = await getDocs(bagsCol);
       const bagsData: Bag[] = bagsSnap.docs.map((b) => ({
@@ -164,7 +167,7 @@ export default function Pedidos() {
         status: b.data().status,
         criadoEm: b.data().criadoEm?.toDate() ?? new Date(),
         produtoId: prodDoc.id,
-        identificador: b.data().identificador || "", 
+        identificador: b.data().identificador || "",
       }));
 
       produtosData.push({
@@ -195,6 +198,8 @@ export default function Pedidos() {
         total: d.total,
         observacoes: d.observacoes || "",
         numeroPedido: d.numeroPedido || "",
+        formaPagamento: d.formaPagamento || "",
+        prazoPagamento: d.prazoPagamento || "",
       };
     });
     setPedidos(pedidosData);
@@ -206,7 +211,6 @@ export default function Pedidos() {
     fetchPedidos();
   }, []);
 
-  // Resetar formulário
   const resetForm = () => {
     setFormData({
       clienteId: "",
@@ -214,6 +218,8 @@ export default function Pedidos() {
       status: "pendente",
       observacoes: "",
       numeroPedido: "",
+      formaPagamento: "",
+      prazoPagamento: "",
     });
     setItens([]);
     setNovoItemProdutoId("");
@@ -222,7 +228,7 @@ export default function Pedidos() {
     setEditingPedido(null);
   };
 
-  // Quando muda o produto selecionado para novo item, carregar as bags disponíveis para escolha
+  // Quando o produto para novo item mudar, carregar bags disponíveis
   useEffect(() => {
     if (!novoItemProdutoId) {
       setBagsSelecionadas([]);
@@ -233,14 +239,14 @@ export default function Pedidos() {
       setBagsSelecionadas([]);
       return;
     }
-    // Montar array de bags disponíveis, todas não selecionadas e peso usado 0
+    // Bags disponíveis (status "disponivel" e peso > 0)
     const bagsDisp = produto.bags
       .filter((b) => b.status === "disponivel" && b.pesoKg > 0)
       .map((b) => ({ bagId: b.id, pesoUsado: 0, selecionada: false }));
     setBagsSelecionadas(bagsDisp);
   }, [novoItemProdutoId, produtos]);
 
-  // Função pra atualizar a seleção e peso das bags no novo item
+  // Alternar seleção da bag e definir peso usado igual ao peso original quando selecionada
   const toggleBagSelecionada = (bagId: string) => {
     setBagsSelecionadas((prev) =>
       prev.map((bag) => {
@@ -259,6 +265,7 @@ export default function Pedidos() {
     );
   };
 
+  // Atualizar peso da bag e marca como selecionada se peso > 0
   const atualizarPesoBag = (bagId: string, peso: number) => {
     setBagsSelecionadas((prev) =>
       prev.map((bag) =>
@@ -266,11 +273,12 @@ export default function Pedidos() {
       ),
     );
   };
-  // Função pra calcular total de peso selecionado nas bags
+
+  // Calcular peso total selecionado nas bags
   const totalPesoSelecionado = () =>
     bagsSelecionadas.reduce((acc, bag) => (bag.selecionada ? acc + bag.pesoUsado : acc), 0);
 
-  // Adicionar item com bags selecionadas manualmente no pedido
+  // Adicionar item no pedido com bags selecionadas manualmente
   const adicionarItem = () => {
     if (!novoItemProdutoId) return;
 
@@ -283,7 +291,7 @@ export default function Pedidos() {
       return;
     }
 
-    // Checar se peso selecionado não ultrapassa o estoque disponível das bags selecionadas
+    // Validar se peso usado em cada bag não ultrapassa estoque disponível
     for (const bagSel of bagsSelecionadas) {
       if (bagSel.selecionada) {
         const bagProduto = produto.bags.find((b) => b.id === bagSel.bagId);
@@ -300,27 +308,25 @@ export default function Pedidos() {
       }
     }
 
-    // Verificar se já existe item do mesmo produto no pedido
+    // Verificar se já existe item para esse produto no pedido
     const itemExistente = itens.find((item) => item.produtoId === produto.id);
 
     if (itemExistente) {
-      // Atualiza a quantidade e as bags usadas
+      // Atualiza quantidade e bags usadas (somando os pesos)
       const novaQtd = itemExistente.quantidade + pesoTotalSelecionado;
 
-      // Para juntar as bags usadas, precisamos combinar bags antigas + novas:
+      // Combinar bags antigas e novas em um mapa para somar pesos
       const bagsUsadasMap = new Map<string, number>();
-      // adiciona as antigas
       for (const b of itemExistente.bagsUsadas) {
         bagsUsadasMap.set(b.bagId, (bagsUsadasMap.get(b.bagId) ?? 0) + b.pesoUsado);
       }
-      // adiciona as novas selecionadas
       for (const b of bagsSelecionadas) {
         if (b.selecionada) {
           bagsUsadasMap.set(b.bagId, (bagsUsadasMap.get(b.bagId) ?? 0) + b.pesoUsado);
         }
       }
 
-      // Montar novo array de bags usadas
+      // Novo array de bags usadas
       const bagsUsadasAtualizadas = Array.from(bagsUsadasMap.entries()).map(([bagId, pesoUsado]) => ({
         bagId,
         pesoUsado,
@@ -339,7 +345,7 @@ export default function Pedidos() {
         ),
       );
     } else {
-      // Novo item do pedido
+      // Novo item
       const novoItemPedido: ItemPedido = {
         id: Date.now().toString(),
         produtoId: produto.id,
@@ -354,7 +360,7 @@ export default function Pedidos() {
       setItens((prev) => [...prev, novoItemPedido]);
     }
 
-    // Resetar seleção de produto, peso e bags
+    // Resetar seleção
     setNovoItemProdutoId("");
     setNovoItemQuantidade(0);
     setBagsSelecionadas([]);
@@ -365,7 +371,7 @@ export default function Pedidos() {
     setItens((prev) => prev.filter((item) => item.id !== id));
   };
 
-  // Calcula total do pedido
+  // Calcular total do pedido
   const calcularTotal = () => {
     return itens.reduce((total, item) => total + item.subtotal, 0);
   };
@@ -377,7 +383,7 @@ export default function Pedidos() {
       return;
     }
 
-    // Busca cliente real
+    // Buscar cliente válido
     const cliente = clientes.find((c) => c.id === formData.clienteId);
     if (!cliente) {
       alert("Cliente inválido.");
@@ -385,12 +391,11 @@ export default function Pedidos() {
     }
 
     try {
-      // Ajustar bags no Firestore: subtrair peso vendido de cada bag usada
+      // Atualizar bags: subtrair peso usado e ajustar status
       for (const item of itens) {
         for (const bagUso of item.bagsUsadas) {
           const bagRef = doc(db, "produtos", item.produtoId, "bags", bagUso.bagId);
 
-          // Buscar bag atual para pegar peso antes de atualizar
           const produtoBags = produtos.find((p) => p.id === item.produtoId)?.bags;
           const bagAtual = produtoBags?.find((b) => b.id === bagUso.bagId);
           if (!bagAtual) continue;
@@ -398,13 +403,14 @@ export default function Pedidos() {
           const novoPeso = bagAtual.pesoKg - bagUso.pesoUsado;
 
           await updateDoc(bagRef, {
+            pesoKg: novoPeso,
             status: novoPeso <= 0 ? "vendido" : "disponivel",
           });
         }
       }
 
-      // Monta objeto pedido
-      const pedidoData: Omit<Pedido, "id"> = {
+      // Montar pedido para salvar
+      const pedidoDataBase: Omit<Pedido, "id"> = {
         clienteId: cliente.id,
         clienteNome: cliente.nome,
         dataPedido: new Date().toISOString().split("T")[0],
@@ -414,30 +420,37 @@ export default function Pedidos() {
         total: calcularTotal(),
         observacoes: formData.observacoes,
         numeroPedido: formData.numeroPedido || undefined,
+        formaPagamento: formData.formaPagamento,
       };
 
-      if (editingPedido) {
-        // Atualizar pedido
-        const pedidoRef = doc(db, "pedidos", editingPedido.id);
-        await updateDoc(pedidoRef, pedidoData);
+      const pedidoData = { ...pedidoDataBase };
+
+      if (formData.formaPagamento === "A prazo" && formData.prazoPagamento.trim() !== "") {
+        pedidoData.prazoPagamento = formData.prazoPagamento;
       } else {
-        // Criar novo pedido
-        const pedidosCol = collection(db, "pedidos");
-        await addDoc(pedidosCol, pedidoData);
+        delete pedidoData.prazoPagamento;
       }
 
-      alert("Pedido salvo com sucesso!");
-      setIsDialogOpen(false);
-      resetForm();
-      fetchProdutos(); // Recarregar produtos (bags atualizadas)
-      fetchPedidos(); // Recarregar pedidos
-    } catch (error) {
-      console.error(error);
-      alert("Erro ao salvar pedido.");
+    if (editingPedido) {
+      const pedidoRef = doc(db, "pedidos", editingPedido.id);
+      await updateDoc(pedidoRef, pedidoData);
+    } else {
+      const pedidosCol = collection(db, "pedidos");
+      await addDoc(pedidosCol, pedidoData);
     }
-  };
 
-  // Editar pedido
+    alert("Pedido salvo com sucesso!");
+    setIsDialogOpen(false);
+    resetForm();
+    fetchProdutos(); // Atualizar bags
+    fetchPedidos(); // Atualizar lista
+  } catch (error) {
+    console.error(error);
+    alert("Erro ao salvar pedido.");
+  }
+};
+
+  // Editar pedido - popular formulário e itens
   const handleEdit = (pedido: Pedido) => {
     setEditingPedido(pedido);
     setFormData({
@@ -446,6 +459,8 @@ export default function Pedidos() {
       status: pedido.status,
       observacoes: pedido.observacoes || "",
       numeroPedido: pedido.numeroPedido || "",
+      formaPagamento: pedido.formaPagamento || "",
+      prazoPagamento: pedido.prazoPagamento || "",
     });
     setItens(pedido.itens);
     setIsDialogOpen(true);
@@ -469,7 +484,7 @@ export default function Pedidos() {
               <DialogTitle>{editingPedido ? "Editar Pedido" : "Novo Pedido"}</DialogTitle>
             </DialogHeader>
             <div className="space-y-6">
-              {/* Dados gerais */}
+              {/* Dados Gerais */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="cliente">Cliente *</Label>
@@ -489,6 +504,7 @@ export default function Pedidos() {
                     </SelectContent>
                   </Select>
                 </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="dataEntrega">Data de Entrega</Label>
                   <Input
@@ -497,6 +513,7 @@ export default function Pedidos() {
                     onChange={(e) => setFormData({ ...formData, dataEntrega: e.target.value })}
                   />
                 </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="numeroPedido">Número do Pedido</Label>
                   <Input
@@ -506,6 +523,45 @@ export default function Pedidos() {
                     onChange={(e) => setFormData({ ...formData, numeroPedido: e.target.value })}
                   />
                 </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="formaPagamento">Forma de Pagamento</Label>
+                  <Select
+                    value={formData.formaPagamento}
+                    onValueChange={(v) =>
+                      setFormData({ ...formData, formaPagamento: v, prazoPagamento: "" })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Escolha uma forma de pagamento" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="À vista">À vista</SelectItem>
+                      <SelectItem value="Parcelado">Parcelado</SelectItem>
+                      <SelectItem value="A prazo">A prazo</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {formData.formaPagamento === "A prazo" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="prazoPagamento">Prazo</Label>
+                    <Select
+                      value={formData.prazoPagamento}
+                      onValueChange={(v) => setFormData({ ...formData, prazoPagamento: v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Escolha o prazo" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="14 dias">14 dias</SelectItem>
+                        <SelectItem value="21 dias">21 dias</SelectItem>
+                        <SelectItem value="28 dias">28 dias</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
                 <div className="space-y-2">
                   <Label htmlFor="status">Status</Label>
                   <Select
@@ -523,6 +579,7 @@ export default function Pedidos() {
                     </SelectContent>
                   </Select>
                 </div>
+
                 <div className="space-y-2 col-span-2">
                   <Label htmlFor="observacoes">Observações</Label>
                   <Textarea
@@ -537,13 +594,10 @@ export default function Pedidos() {
               <div className="border-t pt-4">
                 <h3 className="text-lg font-medium mb-4">Itens do Pedido</h3>
 
-                {/* Seleção do Produto e Quantidade */}
+                {/* Seleção do Produto e bags */}
                 <div className="flex flex-col gap-3 mb-4">
                   <div className="flex gap-2 items-center">
-                    <Select
-                      value={novoItemProdutoId}
-                      onValueChange={setNovoItemProdutoId}
-                    >
+                    <Select value={novoItemProdutoId} onValueChange={setNovoItemProdutoId}>
                       <SelectTrigger className="flex-1">
                         <SelectValue placeholder="Selecione um produto" />
                       </SelectTrigger>
@@ -564,19 +618,20 @@ export default function Pedidos() {
                       </SelectContent>
                     </Select>
 
-                    {/* Quantidade total (não usada para dividir bags, só pra visualização e validação) */}
+                    {/* Mostrar total peso selecionado (não editável) */}
                     <Input
                       type="number"
                       min={0}
                       step={0.01}
-                       value={totalPesoSelecionado().toFixed(2)}
+                      value={totalPesoSelecionado().toFixed(2)}
                       onChange={() => {}}
                       placeholder="Peso total (kg)"
                       className="w-32"
+                      readOnly
                     />
                   </div>
 
-                  {/* Listagem das bags para seleção manual */}
+                  {/* Listagem bags para seleção */}
                   {bagsSelecionadas.length > 0 && (
                     <div className="border rounded p-3 max-h-48 overflow-y-auto">
                       <p className="mb-2 font-medium">Selecione as bags e informe o peso retirado:</p>
@@ -586,10 +641,7 @@ export default function Pedidos() {
                           ?.bags.find((b) => b.id === bag.bagId);
 
                         return (
-                          <div
-                            key={bag.bagId}
-                            className="flex items-center gap-3 mb-1"
-                          >
+                          <div key={bag.bagId} className="flex items-center gap-3 mb-1">
                             <input
                               type="checkbox"
                               checked={bag.selecionada}
@@ -597,19 +649,19 @@ export default function Pedidos() {
                               id={`checkbox-${bag.bagId}`}
                             />
                             <label htmlFor={`checkbox-${bag.bagId}`} className="flex-1">
-                              Bag #{bagInfo?.identificador || bag.bagId} - Estoque: {bagInfo?.pesoKg.toFixed(2)} kg
+                              Bag #{bagInfo?.identificador || bag.bagId} - Estoque:{" "}
+                              {bagInfo?.pesoKg.toFixed(2)} kg
                             </label>
                           </div>
                         );
                       })}
-
                       <p className="mt-2 font-semibold">
                         Total selecionado: {totalPesoSelecionado().toFixed(2)} kg
                       </p>
                     </div>
                   )}
 
-                  {/* Botão adicionar item */}
+                   {/* Botão adicionar item */}
                   <Button
                     onClick={adicionarItem}
                     disabled={
@@ -675,7 +727,6 @@ export default function Pedidos() {
           </DialogContent>
         </Dialog>
       </div>
-            {/* Filtro rápido e pesquisa */}
       <Card>
         <CardHeader>
           <CardTitle>Lista de Pedidos</CardTitle>
@@ -784,5 +835,3 @@ export default function Pedidos() {
     </div>
   );
 }
-
-
