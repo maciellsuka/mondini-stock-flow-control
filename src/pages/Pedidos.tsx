@@ -20,6 +20,7 @@ import {
   Calendar,
   Package,
   Download,
+  BadgeCheck,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -103,8 +104,11 @@ interface Pedido {
   observacoes?: string;
   numeroPedido?: string;
   formaPagamento?: string;
-  prazoPagamento?: string; // Corrigido para existir
+  prazoPagamento?: string;
+  dataVencimento?: string;
+  statusPagamento?: "Não Pago" | "Pago";
 }
+
 
 export default function Pedidos() {
   // States
@@ -200,6 +204,8 @@ export default function Pedidos() {
         numeroPedido: d.numeroPedido || "",
         formaPagamento: d.formaPagamento || "",
         prazoPagamento: d.prazoPagamento || "",
+        dataVencimento: d.dataVencimento || "", // ✅ Adicionado aqui
+        statusPagamento: d.statusPagamento || "", // ✅ Adicionado aqui também (opcional)
       };
     });
     setPedidos(pedidosData);
@@ -409,27 +415,39 @@ export default function Pedidos() {
         }
       }
 
+      const diasPrazo = formData.formaPagamento === "A prazo"
+        ? parseInt(formData.prazoPagamento.replace(/\D/g, ""), 10)
+        : 0;
+
+      const dataPedidoHoje = new Date();
+      const dataVencimento = new Date(dataPedidoHoje);
+      dataVencimento.setDate(dataVencimento.getDate() + diasPrazo);
+
       // Montar pedido para salvar
-      const pedidoDataBase: Omit<Pedido, "id"> = {
-        clienteId: cliente.id,
-        clienteNome: cliente.nome,
-        dataPedido: new Date().toISOString().split("T")[0],
-        dataEntrega: formData.dataEntrega || undefined,
-        status: formData.status,
-        itens,
-        total: calcularTotal(),
-        observacoes: formData.observacoes,
-        numeroPedido: formData.numeroPedido || undefined,
-        formaPagamento: formData.formaPagamento,
-      };
+      const pedidoDataBase: Omit<Pedido, "id"> & {
+      dataVencimento?: string;
+      statusPagamento?: string;
+    } = {
+      clienteId: cliente.id,
+      clienteNome: cliente.nome,
+      dataPedido: dataPedidoHoje.toISOString().split("T")[0],
+      dataEntrega: formData.dataEntrega || undefined,
+      status: formData.status,
+      itens,
+      total: calcularTotal(),
+      observacoes: formData.observacoes,
+      numeroPedido: formData.numeroPedido || undefined,
+      formaPagamento: formData.formaPagamento,
+      ...(formData.formaPagamento === "A prazo" && formData.prazoPagamento
+        ? {
+            prazoPagamento: formData.prazoPagamento,
+            dataVencimento: dataVencimento.toISOString().split("T")[0],
+            statusPagamento: "Não Pago",
+          }
+        : {}),
+    };
 
-      const pedidoData = { ...pedidoDataBase };
-
-      if (formData.formaPagamento === "A prazo" && formData.prazoPagamento.trim() !== "") {
-        pedidoData.prazoPagamento = formData.prazoPagamento;
-      } else {
-        delete pedidoData.prazoPagamento;
-      }
+    const pedidoData = pedidoDataBase;
 
     if (editingPedido) {
       const pedidoRef = doc(db, "pedidos", editingPedido.id);
@@ -466,8 +484,8 @@ export default function Pedidos() {
     setIsDialogOpen(true);
   };
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-4 sm:p-6 space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Pedidos</h1>
           <p className="text-gray-500 mt-1">Gerencie os pedidos dos clientes</p>
@@ -485,14 +503,14 @@ export default function Pedidos() {
             </DialogHeader>
             <div className="space-y-6">
               {/* Dados Gerais */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="cliente">Cliente *</Label>
                   <Select
                     value={formData.clienteId}
                     onValueChange={(v) => setFormData({ ...formData, clienteId: v })}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="w-full">
                       <SelectValue placeholder="Selecione um cliente" />
                     </SelectTrigger>
                     <SelectContent>
@@ -508,6 +526,7 @@ export default function Pedidos() {
                 <div className="space-y-2">
                   <Label htmlFor="dataEntrega">Data de Entrega</Label>
                   <Input
+                    className="w-full"
                     type="date"
                     value={formData.dataEntrega}
                     onChange={(e) => setFormData({ ...formData, dataEntrega: e.target.value })}
@@ -517,6 +536,7 @@ export default function Pedidos() {
                 <div className="space-y-2">
                   <Label htmlFor="numeroPedido">Número do Pedido</Label>
                   <Input
+                    className="w-full"
                     type="text"
                     placeholder="Ex: 2025-001"
                     value={formData.numeroPedido}
@@ -532,7 +552,7 @@ export default function Pedidos() {
                       setFormData({ ...formData, formaPagamento: v, prazoPagamento: "" })
                     }
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="w-full">
                       <SelectValue placeholder="Escolha uma forma de pagamento" />
                     </SelectTrigger>
                     <SelectContent>
@@ -550,7 +570,7 @@ export default function Pedidos() {
                       value={formData.prazoPagamento}
                       onValueChange={(v) => setFormData({ ...formData, prazoPagamento: v })}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className="w-full">
                         <SelectValue placeholder="Escolha o prazo" />
                       </SelectTrigger>
                       <SelectContent>
@@ -562,13 +582,31 @@ export default function Pedidos() {
                   </div>
                 )}
 
+                {formData.formaPagamento === "A prazo" && formData.prazoPagamento && (
+                  <div className="space-y-2">
+                    <Label>Data de Vencimento</Label>
+                    <Input
+                      type="text"
+                      readOnly
+                      value={(() => {
+                        const dias = parseInt(formData.prazoPagamento.replace(/\D/g, ""), 10);
+                        const dataBase = editingPedido?.dataPedido
+                          ? new Date(editingPedido.dataPedido)
+                          : new Date();
+                        dataBase.setDate(dataBase.getDate() + dias);
+                        return dataBase.toLocaleDateString("pt-BR");
+                      })()}
+                    />
+                  </div>
+                )}
+
                 <div className="space-y-2">
                   <Label htmlFor="status">Status</Label>
                   <Select
                     value={formData.status}
                     onValueChange={(v: StatusPedido) => setFormData({ ...formData, status: v })}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -596,9 +634,9 @@ export default function Pedidos() {
 
                 {/* Seleção do Produto e bags */}
                 <div className="flex flex-col gap-3 mb-4">
-                  <div className="flex gap-2 items-center">
+                  <div className="flex flex-col sm:flex-row gap-2">
                     <Select value={novoItemProdutoId} onValueChange={setNovoItemProdutoId}>
-                      <SelectTrigger className="flex-1">
+                      <SelectTrigger className="flex-1 w-full">
                         <SelectValue placeholder="Selecione um produto" />
                       </SelectTrigger>
                       <SelectContent>
@@ -626,7 +664,7 @@ export default function Pedidos() {
                       value={totalPesoSelecionado().toFixed(2)}
                       onChange={() => {}}
                       placeholder="Peso total (kg)"
-                      className="w-32"
+                      className="w-full"
                       readOnly
                     />
                   </div>
@@ -643,6 +681,7 @@ export default function Pedidos() {
                         return (
                           <div key={bag.bagId} className="flex items-center gap-3 mb-1">
                             <input
+                              className="w-full"
                               type="checkbox"
                               checked={bag.selecionada}
                               onChange={() => toggleBagSelecionada(bag.bagId)}
@@ -675,10 +714,12 @@ export default function Pedidos() {
 
                 {/* Lista dos itens adicionados no pedido */}
                 {itens.length > 0 && (
+                <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead>Produto</TableHead>
+                        <TableHead>Bags</TableHead>                                                
                         <TableHead>Quantidade (kg)</TableHead>
                         <TableHead>Preço Unitário</TableHead>
                         <TableHead>Subtotal</TableHead>
@@ -686,27 +727,33 @@ export default function Pedidos() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {itens.map((item) => (
-                        <TableRow key={item.id}>
-                          <TableCell>{item.produtoNome}</TableCell>
-                          <TableCell>{item.quantidade.toFixed(2)}</TableCell>
-                          <TableCell>R$ {item.precoUnitario.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
-                          <TableCell>R$ {item.subtotal.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
-                          <TableCell className="text-right">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => removerItem(item.id)}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {itens.map((item) => {
+                        const produto = produtos.find((p) => p.id === item.produtoId);
+
+                        const bagsIdentificadas = item.bagsUsadas
+                          .map((bagUso) => {
+                            const bagInfo = produto?.bags.find((b) => b.id === bagUso.bagId);
+                            return `#${bagInfo?.identificador || bagUso.bagId}`;
+                          })
+                          .join(", ");
+
+                        return (
+                          <TableRow key={item.id}>
+                            <TableCell>{item.produtoNome}</TableCell>
+                            <TableCell>{bagsIdentificadas}</TableCell>                            
+                            <TableCell>{item.quantidade.toFixed(2)}</TableCell>
+                            <TableCell>R$ {item.precoUnitario.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                            <TableCell>R$ {item.subtotal.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                            <TableCell className="text-right flex flex-wrap gap-2 justify-end">
+                              <Button variant="outline" size="sm" onClick={() => removerItem(item.id)}>
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                       <TableRow>
-                        <TableCell colSpan={3} className="font-medium">
-                          Total
-                        </TableCell>
+                        <TableCell colSpan={4} className="font-medium">Total</TableCell>
                         <TableCell className="font-bold">
                           R$ {calcularTotal().toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </TableCell>
@@ -714,6 +761,7 @@ export default function Pedidos() {
                       </TableRow>
                     </TableBody>
                   </Table>
+                </div>
                 )}
               </div>
             </div>
@@ -728,21 +776,21 @@ export default function Pedidos() {
         </Dialog>
       </div>
       <Card>
-        <CardHeader>
-          <CardTitle>Lista de Pedidos</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="relative max-w-sm">
-          <Search className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4"/>
-            <Input
-              type="search"
-              placeholder="Buscar por cliente, status..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value.toLowerCase())}
-              className="pl-8"
-            />
-          </div>
-
+      <CardHeader>
+        <CardTitle>Lista de Pedidos</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="relative max-w-sm mb-4">
+          <Search className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4" />
+          <Input
+            type="search"
+            placeholder="Buscar por cliente, status..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value.toLowerCase())}
+            className="pl-8 w-full"
+          />
+        </div>
+        <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -750,7 +798,9 @@ export default function Pedidos() {
                 <TableHead>Cliente</TableHead>
                 <TableHead>Data Pedido</TableHead>
                 <TableHead>Data Entrega</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>Vencimento</TableHead>
+                <TableHead>Status Envio</TableHead>
+                <TableHead>Status Pagamento</TableHead>
                 <TableHead>Total</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
@@ -773,6 +823,11 @@ export default function Pedidos() {
                     <TableCell>{pedido.dataPedido}</TableCell>
                     <TableCell>{pedido.dataEntrega || "-"}</TableCell>
                     <TableCell>
+                      {pedido.formaPagamento === "A prazo" && pedido.dataVencimento
+                        ? new Date(pedido.dataVencimento).toLocaleDateString("pt-BR")
+                        : "-"}
+                    </TableCell>
+                    <TableCell>
                       <Badge className={
                         pedido.status === "concluido" ? "bg-green-500 text-white" :
                         pedido.status === "pendente" ? "bg-yellow-400 text-black" :
@@ -783,9 +838,21 @@ export default function Pedidos() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      R$ {pedido.total.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {pedido.statusPagamento === "Pago" ? (
+                        <Badge className="bg-green-600 text-white">Pago</Badge>
+                      ) : pedido.statusPagamento === "Não Pago" ? (
+                        <Badge className="bg-red-400 text-black">Não Pago</Badge>
+                      ) : (
+                        "-"
+                      )}
                     </TableCell>
-                    <TableCell className="text-right flex gap-2 justify-end">
+                    <TableCell>
+                      R$ {pedido.total.toLocaleString("pt-BR", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </TableCell>
+                    <TableCell className="text-right flex gap-2 justify-end flex-wrap">
                       <Button
                         variant="outline"
                         size="sm"
@@ -802,6 +869,27 @@ export default function Pedidos() {
                       >
                         <FileText className="w-4 h-4" />
                       </Button>
+                      {pedido.statusPagamento === "Não Pago" && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={async () => {
+                            if (confirm("Marcar esse pedido como PAGO?")) {
+                              try {
+                                const pedidoRef = doc(db, "pedidos", pedido.id);
+                                await updateDoc(pedidoRef, { statusPagamento: "Pago" });
+                                fetchPedidos();
+                              } catch (error) {
+                                console.error(error);
+                                alert("Erro ao marcar como pago.");
+                              }
+                            }
+                          }}
+                          title="Marcar como Pago"
+                        >
+                          <BadgeCheck className="w-4 h-4" />
+                        </Button>
+                      )}
                       <Button
                         variant="destructive"
                         size="sm"
@@ -830,8 +918,8 @@ export default function Pedidos() {
                 ))}
             </TableBody>
           </Table>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
+        </div>
+      </CardContent>
+    </Card>
+  </div>
+);}

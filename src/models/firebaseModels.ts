@@ -59,18 +59,19 @@ export interface Pedido {
   id: string;
   clienteId: string;
   clienteNome: string;
-  condicaoPagamento: string;
-  criadoEm: Date;
+  dataPedido: string;
+  dataEntrega?: string;
   numeroPedido: string;
-  observacao?: string;
-  transportadora?: string;
-  vencimento?: Date;
+  formaPagamento: string;
+  prazoPagamento?: string;
+  observacoes?: string;
+  status: "pendente" | "processando" | "concluido" | "cancelado";
   produtos: ProdutoNoPedido[];
   total: number;
-
-    // ✅ Adicione isso:
-  status: "pendente" | "processando" | "concluido" | "cancelado";
+  statusPagamento: "Pago" | "Não Pago";
+  dataVencimento?: string;
 }
+
 
 export interface ProdutoComBags extends Produto {
   bags: Bag[];

@@ -24,6 +24,7 @@ interface Pedido {
   numeroPedido?: string;
   formaPagamento?: string;
   prazoPagamento?: string;
+  dataVencimento?: string;
 }
 
 export const generatePedidoPDF = async (pedido: Pedido) => {
@@ -86,21 +87,26 @@ export const generatePedidoPDF = async (pedido: Pedido) => {
         </tr>`
             : ""
         }
-        ${
-          pedido.formaPagamento === "A prazo" && pedido.prazoPagamento
-            ? `
-        <tr>
-          <th>Forma de Pagamento</th>
-          <td>${pedido.formaPagamento}</td>
-          <th>Prazo de Pagamento</th>
-          <td>${pedido.prazoPagamento}</td>
-        </tr>`
-            : `
-        <tr>
-          <th>Forma de Pagamento</th>
-          <td colspan="3">${pedido.formaPagamento || "-"}</td>
-        </tr>`
-        }
+          ${
+            pedido.formaPagamento === "A prazo" && pedido.prazoPagamento
+              ? `
+          <tr>
+            <th rowSpan="2">Forma de Pagamento</th>
+            <td rowSpan="2">${pedido.formaPagamento}</td>
+            <th>Prazo de Pagamento</th>
+            <td>${pedido.prazoPagamento}</td>
+          </tr>
+          <tr>
+            <th>Data de Vencimento</th>
+            <td>${pedido.dataVencimento ? new Date(pedido.dataVencimento).toLocaleDateString("pt-BR") : "-"}</td>
+          </tr>`
+              : `
+          <tr>
+            <th>Forma de Pagamento</th>
+            <td colspan="3">${pedido.formaPagamento || "-"}</td>
+          </tr>`
+          }
+
       </table>
 
       <table>
@@ -232,18 +238,14 @@ export const generatePedidoPDF = async (pedido: Pedido) => {
     </html>
   `;
 
-  const printWindow = window.open("", "_blank");
-  if (!printWindow) {
-    alert("Por favor, permita pop-ups para gerar o PDF");
-    return;
-  }
+  const newTab = window.open("", "_blank");
+    if (!newTab) {
+      alert("Por favor, permita pop-ups para visualizar o PDF");
+      return;
+    }
 
-  printWindow.document.write(html);
-  printWindow.document.close();
-  printWindow.onload = () => {
-    setTimeout(() => {
-      printWindow.print();
-      printWindow.close();
-    }, 200);
-  };
+    newTab.document.write(html);
+    newTab.document.close();
+      
 };
+
