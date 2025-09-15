@@ -109,6 +109,12 @@ interface Pedido {
   statusPagamento?: "Não Pago" | "Pago";
 }
 
+// Função para formatar data ISO para o formato brasileiro
+const formatarDataISOParaBrasil = (dataISO: string) => {
+  if (!dataISO) return "-";
+  const [ano, mes, dia] = dataISO.split("-");
+  return `${dia}/${mes}/${ano}`;
+};
 
 export default function Pedidos() {
   // States
@@ -187,7 +193,9 @@ export default function Pedidos() {
   // Buscar pedidos do Firestore
   const fetchPedidos = async () => {
     const pedidosCol = collection(db, "pedidos");
-    const pedidosSnap = await getDocs(query(pedidosCol, orderBy("dataPedido", "desc")));
+    const pedidosSnap = await getDocs(
+      query(pedidosCol, orderBy("dataPedido", "desc"))
+    );
 
     const pedidosData: Pedido[] = pedidosSnap.docs.map((doc) => {
       const d = doc.data();
@@ -205,7 +213,9 @@ export default function Pedidos() {
         formaPagamento: d.formaPagamento || "",
         prazoPagamento: d.prazoPagamento || "",
         dataVencimento: d.dataVencimento || "", // ✅ Adicionado aqui
-        statusPagamento: d.statusPagamento || "", // ✅ Adicionado aqui também (opcional)
+        statusPagamento:
+          (d.statusPagamento as "Não Pago" | "Pago") || undefined,
+        // ✅ Adicionado aqui também (opcional)
       };
     });
     setPedidos(pedidosData);
@@ -267,7 +277,7 @@ export default function Pedidos() {
           };
         }
         return bag;
-      }),
+      })
     );
   };
 
@@ -275,14 +285,19 @@ export default function Pedidos() {
   const atualizarPesoBag = (bagId: string, peso: number) => {
     setBagsSelecionadas((prev) =>
       prev.map((bag) =>
-        bag.bagId === bagId ? { ...bag, pesoUsado: peso > 0 ? peso : 0, selecionada: peso > 0 } : bag,
-      ),
+        bag.bagId === bagId
+          ? { ...bag, pesoUsado: peso > 0 ? peso : 0, selecionada: peso > 0 }
+          : bag
+      )
     );
   };
 
   // Calcular peso total selecionado nas bags
   const totalPesoSelecionado = () =>
-    bagsSelecionadas.reduce((acc, bag) => (bag.selecionada ? acc + bag.pesoUsado : acc), 0);
+    bagsSelecionadas.reduce(
+      (acc, bag) => (bag.selecionada ? acc + bag.pesoUsado : acc),
+      0
+    );
 
   // Adicionar item no pedido com bags selecionadas manualmente
   const adicionarItem = () => {
@@ -307,7 +322,7 @@ export default function Pedidos() {
         }
         if (bagSel.pesoUsado > bagProduto.pesoKg) {
           alert(
-            `Peso selecionado para a bag ${bagSel.bagId} excede o estoque disponível (${bagProduto.pesoKg}kg).`,
+            `Peso selecionado para la bag ${bagSel.bagId} excede o estoque disponível (${bagProduto.pesoKg}kg).`
           );
           return;
         }
@@ -324,19 +339,27 @@ export default function Pedidos() {
       // Combinar bags antigas e novas em um mapa para somar pesos
       const bagsUsadasMap = new Map<string, number>();
       for (const b of itemExistente.bagsUsadas) {
-        bagsUsadasMap.set(b.bagId, (bagsUsadasMap.get(b.bagId) ?? 0) + b.pesoUsado);
+        bagsUsadasMap.set(
+          b.bagId,
+          (bagsUsadasMap.get(b.bagId) ?? 0) + b.pesoUsado
+        );
       }
       for (const b of bagsSelecionadas) {
         if (b.selecionada) {
-          bagsUsadasMap.set(b.bagId, (bagsUsadasMap.get(b.bagId) ?? 0) + b.pesoUsado);
+          bagsUsadasMap.set(
+            b.bagId,
+            (bagsUsadasMap.get(b.bagId) ?? 0) + b.pesoUsado
+          );
         }
       }
 
       // Novo array de bags usadas
-      const bagsUsadasAtualizadas = Array.from(bagsUsadasMap.entries()).map(([bagId, pesoUsado]) => ({
-        bagId,
-        pesoUsado,
-      }));
+      const bagsUsadasAtualizadas = Array.from(bagsUsadasMap.entries()).map(
+        ([bagId, pesoUsado]) => ({
+          bagId,
+          pesoUsado,
+        })
+      );
 
       setItens((prev) =>
         prev.map((item) =>
@@ -347,8 +370,8 @@ export default function Pedidos() {
                 subtotal: novaQtd * item.precoUnitario,
                 bagsUsadas: bagsUsadasAtualizadas,
               }
-            : item,
-        ),
+            : item
+        )
       );
     } else {
       // Novo item
@@ -400,9 +423,17 @@ export default function Pedidos() {
       // Atualizar bags: subtrair peso usado e ajustar status
       for (const item of itens) {
         for (const bagUso of item.bagsUsadas) {
-          const bagRef = doc(db, "produtos", item.produtoId, "bags", bagUso.bagId);
+          const bagRef = doc(
+            db,
+            "produtos",
+            item.produtoId,
+            "bags",
+            bagUso.bagId
+          );
 
-          const produtoBags = produtos.find((p) => p.id === item.produtoId)?.bags;
+          const produtoBags = produtos.find(
+            (p) => p.id === item.produtoId
+          )?.bags;
           const bagAtual = produtoBags?.find((b) => b.id === bagUso.bagId);
           if (!bagAtual) continue;
 
@@ -415,58 +446,73 @@ export default function Pedidos() {
         }
       }
 
-      const diasPrazo = formData.formaPagamento === "A prazo"
-        ? parseInt(formData.prazoPagamento.replace(/\D/g, ""), 10)
-        : 0;
+      const diasPrazo =
+        formData.formaPagamento === "A prazo"
+          ? parseInt(formData.prazoPagamento.replace(/\D/g, ""), 10)
+          : 0;
 
-      const dataPedidoHoje = new Date();
-      const dataVencimento = new Date(dataPedidoHoje);
+      // Corrigir o cálculo da data de vencimento
+      const dataBase = editingPedido?.dataPedido
+        ? new Date(editingPedido.dataPedido + "T12:00:00") // Adiciona meio-dia para evitar problemas de fuso
+        : new Date();
+
+      const dataVencimento = new Date(dataBase);
       dataVencimento.setDate(dataVencimento.getDate() + diasPrazo);
+
+      // Formatar a data manualmente para evitar problemas de fuso
+      const dataVencimentoStr = `${dataVencimento.getFullYear()}-${(
+        dataVencimento.getMonth() + 1
+      )
+        .toString()
+        .padStart(2, "0")}-${dataVencimento
+        .getDate()
+        .toString()
+        .padStart(2, "0")}`;
 
       // Montar pedido para salvar
       const pedidoDataBase: Omit<Pedido, "id"> & {
-      dataVencimento?: string;
-      statusPagamento?: string;
-    } = {
-      clienteId: cliente.id,
-      clienteNome: cliente.nome,
-      dataPedido: dataPedidoHoje.toISOString().split("T")[0],
-      dataEntrega: formData.dataEntrega || undefined,
-      status: formData.status,
-      itens,
-      total: calcularTotal(),
-      observacoes: formData.observacoes,
-      numeroPedido: formData.numeroPedido || undefined,
-      formaPagamento: formData.formaPagamento,
-      ...(formData.formaPagamento === "A prazo" && formData.prazoPagamento
-        ? {
-            prazoPagamento: formData.prazoPagamento,
-            dataVencimento: dataVencimento.toISOString().split("T")[0],
-            statusPagamento: "Não Pago",
-          }
-        : {}),
-    };
+        dataVencimento?: string;
+        statusPagamento?: string;
+      } = {
+        clienteId: cliente.id,
+        clienteNome: cliente.nome,
+        dataPedido: dataBase.toISOString().split("T")[0],
+        dataEntrega: formData.dataEntrega || undefined,
+        status: formData.status,
+        itens,
+        total: calcularTotal(),
+        observacoes: formData.observacoes,
+        numeroPedido: formData.numeroPedido || undefined,
+        formaPagamento: formData.formaPagamento,
+        ...(formData.formaPagamento === "A prazo" && formData.prazoPagamento
+          ? {
+              prazoPagamento: formData.prazoPagamento,
+              dataVencimento: dataVencimentoStr,
+              statusPagamento: "Não Pago",
+            }
+          : {}),
+      };
 
-    const pedidoData = pedidoDataBase;
+      const pedidoData = pedidoDataBase;
 
-    if (editingPedido) {
-      const pedidoRef = doc(db, "pedidos", editingPedido.id);
-      await updateDoc(pedidoRef, pedidoData);
-    } else {
-      const pedidosCol = collection(db, "pedidos");
-      await addDoc(pedidosCol, pedidoData);
+      if (editingPedido) {
+        const pedidoRef = doc(db, "pedidos", editingPedido.id);
+        await updateDoc(pedidoRef, pedidoData);
+      } else {
+        const pedidosCol = collection(db, "pedidos");
+        await addDoc(pedidosCol, pedidoData);
+      }
+
+      alert("Pedido salvo com sucesso!");
+      setIsDialogOpen(false);
+      resetForm();
+      fetchProdutos(); // Atualizar bags
+      fetchPedidos(); // Atualizar lista
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao salvar pedido.");
     }
-
-    alert("Pedido salvo com sucesso!");
-    setIsDialogOpen(false);
-    resetForm();
-    fetchProdutos(); // Atualizar bags
-    fetchPedidos(); // Atualizar lista
-  } catch (error) {
-    console.error(error);
-    alert("Erro ao salvar pedido.");
-  }
-};
+  };
 
   // Editar pedido - popular formulário e itens
   const handleEdit = (pedido: Pedido) => {
@@ -499,7 +545,9 @@ export default function Pedidos() {
           </DialogTrigger>
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>{editingPedido ? "Editar Pedido" : "Novo Pedido"}</DialogTitle>
+              <DialogTitle>
+                {editingPedido ? "Editar Pedido" : "Novo Pedido"}
+              </DialogTitle>
             </DialogHeader>
             <div className="space-y-6">
               {/* Dados Gerais */}
@@ -508,7 +556,9 @@ export default function Pedidos() {
                   <Label htmlFor="cliente">Cliente *</Label>
                   <Select
                     value={formData.clienteId}
-                    onValueChange={(v) => setFormData({ ...formData, clienteId: v })}
+                    onValueChange={(v) =>
+                      setFormData({ ...formData, clienteId: v })
+                    }
                   >
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="Selecione um cliente" />
@@ -529,7 +579,9 @@ export default function Pedidos() {
                     className="w-full"
                     type="date"
                     value={formData.dataEntrega}
-                    onChange={(e) => setFormData({ ...formData, dataEntrega: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, dataEntrega: e.target.value })
+                    }
                   />
                 </div>
 
@@ -540,7 +592,9 @@ export default function Pedidos() {
                     type="text"
                     placeholder="Ex: 2025-001"
                     value={formData.numeroPedido}
-                    onChange={(e) => setFormData({ ...formData, numeroPedido: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, numeroPedido: e.target.value })
+                    }
                   />
                 </div>
 
@@ -549,7 +603,11 @@ export default function Pedidos() {
                   <Select
                     value={formData.formaPagamento}
                     onValueChange={(v) =>
-                      setFormData({ ...formData, formaPagamento: v, prazoPagamento: "" })
+                      setFormData({
+                        ...formData,
+                        formaPagamento: v,
+                        prazoPagamento: "",
+                      })
                     }
                   >
                     <SelectTrigger className="w-full">
@@ -568,7 +626,9 @@ export default function Pedidos() {
                     <Label htmlFor="prazoPagamento">Prazo</Label>
                     <Select
                       value={formData.prazoPagamento}
-                      onValueChange={(v) => setFormData({ ...formData, prazoPagamento: v })}
+                      onValueChange={(v) =>
+                        setFormData({ ...formData, prazoPagamento: v })
+                      }
                     >
                       <SelectTrigger className="w-full">
                         <SelectValue placeholder="Escolha o prazo" />
@@ -582,29 +642,39 @@ export default function Pedidos() {
                   </div>
                 )}
 
-                {formData.formaPagamento === "A prazo" && formData.prazoPagamento && (
-                  <div className="space-y-2">
-                    <Label>Data de Vencimento</Label>
-                    <Input
-                      type="text"
-                      readOnly
-                      value={(() => {
-                        const dias = parseInt(formData.prazoPagamento.replace(/\D/g, ""), 10);
-                        const dataBase = editingPedido?.dataPedido
-                          ? new Date(editingPedido.dataPedido)
-                          : new Date();
-                        dataBase.setDate(dataBase.getDate() + dias);
-                        return dataBase.toLocaleDateString("pt-BR");
-                      })()}
-                    />
-                  </div>
-                )}
+                {formData.formaPagamento === "A prazo" &&
+                  formData.prazoPagamento && (
+                    <div className="space-y-2">
+                      <Label>Data de Vencimento</Label>
+                      <Input
+                        type="text"
+                        readOnly
+                        value={
+                          editingPedido && editingPedido.dataVencimento
+                            ? formatarDataISOParaBrasil(
+                                editingPedido.dataVencimento
+                              )
+                            : (() => {
+                                const dias = parseInt(
+                                  formData.prazoPagamento.replace(/\D/g, ""),
+                                  10
+                                );
+                                const dataBase = new Date();
+                                dataBase.setDate(dataBase.getDate() + dias);
+                                return dataBase.toLocaleDateString("pt-BR");
+                              })()
+                        }
+                      />
+                    </div>
+                  )}
 
                 <div className="space-y-2">
                   <Label htmlFor="status">Status</Label>
                   <Select
                     value={formData.status}
-                    onValueChange={(v: StatusPedido) => setFormData({ ...formData, status: v })}
+                    onValueChange={(v: StatusPedido) =>
+                      setFormData({ ...formData, status: v })
+                    }
                   >
                     <SelectTrigger className="w-full">
                       <SelectValue />
@@ -622,7 +692,9 @@ export default function Pedidos() {
                   <Label htmlFor="observacoes">Observações</Label>
                   <Textarea
                     value={formData.observacoes}
-                    onChange={(e) => setFormData({ ...formData, observacoes: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, observacoes: e.target.value })
+                    }
                     placeholder="Observações sobre o pedido"
                   />
                 </div>
@@ -635,7 +707,10 @@ export default function Pedidos() {
                 {/* Seleção do Produto e bags */}
                 <div className="flex flex-col gap-3 mb-4">
                   <div className="flex flex-col sm:flex-row gap-2">
-                    <Select value={novoItemProdutoId} onValueChange={setNovoItemProdutoId}>
+                    <Select
+                      value={novoItemProdutoId}
+                      onValueChange={setNovoItemProdutoId}
+                    >
                       <SelectTrigger className="flex-1 w-full">
                         <SelectValue placeholder="Selecione um produto" />
                       </SelectTrigger>
@@ -646,7 +721,8 @@ export default function Pedidos() {
                             .reduce((acc, b) => acc + b.pesoKg, 0);
                           return (
                             <SelectItem key={produto.id} value={produto.id}>
-                              {produto.nomeProd} - R$ {produto.precoPorKg.toFixed(2)} /kg -{" "}
+                              {produto.nomeProd} - R${" "}
+                              {produto.precoPorKg.toFixed(2)} /kg -{" "}
                               <span className="font-bold text-green-600">
                                 Disponível: {estoqueDisponivel.toFixed(2)} kg
                               </span>
@@ -672,14 +748,19 @@ export default function Pedidos() {
                   {/* Listagem bags para seleção */}
                   {bagsSelecionadas.length > 0 && (
                     <div className="border rounded p-3 max-h-48 overflow-y-auto">
-                      <p className="mb-2 font-medium">Selecione as bags e informe o peso retirado:</p>
+                      <p className="mb-2 font-medium">
+                        Selecione as bags e informe o peso retirado:
+                      </p>
                       {bagsSelecionadas.map((bag) => {
                         const bagInfo = produtos
                           .find((p) => p.id === novoItemProdutoId)
                           ?.bags.find((b) => b.id === bag.bagId);
 
                         return (
-                          <div key={bag.bagId} className="flex items-center gap-3 mb-1">
+                          <div
+                            key={bag.bagId}
+                            className="flex items-center gap-3 mb-1"
+                          >
                             <input
                               className="w-full"
                               type="checkbox"
@@ -687,25 +768,27 @@ export default function Pedidos() {
                               onChange={() => toggleBagSelecionada(bag.bagId)}
                               id={`checkbox-${bag.bagId}`}
                             />
-                            <label htmlFor={`checkbox-${bag.bagId}`} className="flex-1">
-                              Bag #{bagInfo?.identificador || bag.bagId} - Estoque:{" "}
-                              {bagInfo?.pesoKg.toFixed(2)} kg
+                            <label
+                              htmlFor={`checkbox-${bag.bagId}`}
+                              className="flex-1"
+                            >
+                              Bag #{bagInfo?.identificador || bag.bagId} -
+                              Estoque: {bagInfo?.pesoKg.toFixed(2)} kg
                             </label>
                           </div>
                         );
                       })}
                       <p className="mt-2 font-semibold">
-                        Total selecionado: {totalPesoSelecionado().toFixed(2)} kg
+                        Total selecionado: {totalPesoSelecionado().toFixed(2)}{" "}
+                        kg
                       </p>
                     </div>
                   )}
 
-                   {/* Botão adicionar item */}
+                  {/* Botão adicionar item */}
                   <Button
                     onClick={adicionarItem}
-                    disabled={
-                      !novoItemProdutoId || totalPesoSelecionado() <= 0
-                    }
+                    disabled={!novoItemProdutoId || totalPesoSelecionado() <= 0}
                     className="self-start"
                   >
                     Adicionar Item
@@ -714,54 +797,84 @@ export default function Pedidos() {
 
                 {/* Lista dos itens adicionados no pedido */}
                 {itens.length > 0 && (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Produto</TableHead>
-                        <TableHead>Bags</TableHead>                                                
-                        <TableHead>Quantidade (kg)</TableHead>
-                        <TableHead>Preço Unitário</TableHead>
-                        <TableHead>Subtotal</TableHead>
-                        <TableHead className="text-right">Ações</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {itens.map((item) => {
-                        const produto = produtos.find((p) => p.id === item.produtoId);
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Produto</TableHead>
+                          <TableHead>Bags</TableHead>
+                          <TableHead>Quantidade (kg)</TableHead>
+                          <TableHead>Preço Unitário</TableHead>
+                          <TableHead>Subtotal</TableHead>
+                          <TableHead className="text-right">Ações</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {itens.map((item) => {
+                          const produto = produtos.find(
+                            (p) => p.id === item.produtoId
+                          );
 
-                        const bagsIdentificadas = item.bagsUsadas
-                          .map((bagUso) => {
-                            const bagInfo = produto?.bags.find((b) => b.id === bagUso.bagId);
-                            return `#${bagInfo?.identificador || bagUso.bagId}`;
-                          })
-                          .join(", ");
+                          const bagsIdentificadas = item.bagsUsadas
+                            .map((bagUso) => {
+                              const bagInfo = produto?.bags.find(
+                                (b) => b.id === bagUso.bagId
+                              );
+                              return `#${
+                                bagInfo?.identificador || bagUso.bagId
+                              }`;
+                            })
+                            .join(", ");
 
-                        return (
-                          <TableRow key={item.id}>
-                            <TableCell>{item.produtoNome}</TableCell>
-                            <TableCell>{bagsIdentificadas}</TableCell>                            
-                            <TableCell>{item.quantidade.toFixed(2)}</TableCell>
-                            <TableCell>R$ {item.precoUnitario.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
-                            <TableCell>R$ {item.subtotal.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
-                            <TableCell className="text-right flex flex-wrap gap-2 justify-end">
-                              <Button variant="outline" size="sm" onClick={() => removerItem(item.id)}>
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                      <TableRow>
-                        <TableCell colSpan={4} className="font-medium">Total</TableCell>
-                        <TableCell className="font-bold">
-                          R$ {calcularTotal().toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </TableCell>
-                        <TableCell />
-                      </TableRow>
-                    </TableBody>
-                  </Table>
-                </div>
+                          return (
+                            <TableRow key={item.id}>
+                              <TableCell>{item.produtoNome}</TableCell>
+                              <TableCell>{bagsIdentificadas}</TableCell>
+                              <TableCell>
+                                {item.quantidade.toFixed(2)}
+                              </TableCell>
+                              <TableCell>
+                                R${" "}
+                                {item.precoUnitario.toLocaleString("pt-BR", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
+                              </TableCell>
+                              <TableCell>
+                                R${" "}
+                                {item.subtotal.toLocaleString("pt-BR", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
+                              </TableCell>
+                              <TableCell className="text-right flex flex-wrap gap-2 justify-end">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => removerItem(item.id)}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                        <TableRow>
+                          <TableCell colSpan={4} className="font-medium">
+                            Total
+                          </TableCell>
+                          <TableCell className="font-bold">
+                            R${" "}
+                            {calcularTotal().toLocaleString("pt-BR", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </TableCell>
+                          <TableCell />
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </div>
                 )}
               </div>
             </div>
@@ -776,150 +889,169 @@ export default function Pedidos() {
         </Dialog>
       </div>
       <Card>
-      <CardHeader>
-        <CardTitle>Lista de Pedidos</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="relative max-w-sm mb-4">
-          <Search className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4" />
-          <Input
-            type="search"
-            placeholder="Buscar por cliente, status..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value.toLowerCase())}
-            className="pl-8 w-full"
-          />
-        </div>
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Número</TableHead>
-                <TableHead>Cliente</TableHead>
-                <TableHead>Data Pedido</TableHead>
-                <TableHead>Data Entrega</TableHead>
-                <TableHead>Vencimento</TableHead>
-                <TableHead>Status Envio</TableHead>
-                <TableHead>Status Pagamento</TableHead>
-                <TableHead>Total</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {pedidos
-                .filter((pedido) => {
-                  if (!searchTerm) return true;
-                  const clienteLower = pedido.clienteNome.toLowerCase();
-                  const statusLower = pedido.status.toLowerCase();
-                  return (
-                    clienteLower.includes(searchTerm) ||
-                    statusLower.includes(searchTerm)
-                  );
-                })
-                .map((pedido) => (
-                  <TableRow key={pedido.id}>
-                    <TableCell>{pedido.numeroPedido}</TableCell>
-                    <TableCell>{pedido.clienteNome}</TableCell>
-                    <TableCell>{pedido.dataPedido}</TableCell>
-                    <TableCell>{pedido.dataEntrega || "-"}</TableCell>
-                    <TableCell>
-                      {pedido.formaPagamento === "A prazo" && pedido.dataVencimento
-                        ? new Date(pedido.dataVencimento).toLocaleDateString("pt-BR")
-                        : "-"}
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={
-                        pedido.status === "concluido" ? "bg-green-500 text-white" :
-                        pedido.status === "pendente" ? "bg-yellow-400 text-black" :
-                        pedido.status === "processando" ? "bg-blue-500 text-white" :
-                        "bg-red-500 text-white"
-                      }>
-                        {pedido.status.charAt(0).toUpperCase() + pedido.status.slice(1)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {pedido.statusPagamento === "Pago" ? (
-                        <Badge className="bg-green-600 text-white">Pago</Badge>
-                      ) : pedido.statusPagamento === "Não Pago" ? (
-                        <Badge className="bg-red-400 text-black">Não Pago</Badge>
-                      ) : (
-                        "-"
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      R$ {pedido.total.toLocaleString("pt-BR", {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </TableCell>
-                    <TableCell className="text-right flex gap-2 justify-end flex-wrap">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleEdit(pedido)}
-                        title="Editar pedido"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => generatePedidoPDF(pedido)}
-                        title="Gerar PDF"
-                      >
-                        <FileText className="w-4 h-4" />
-                      </Button>
-                      {pedido.statusPagamento === "Não Pago" && (
+        <CardHeader>
+          <CardTitle>Lista de Pedidos</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="relative max-w-sm mb-4">
+            <Search className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4" />
+            <Input
+              type="search"
+              placeholder="Buscar por cliente, status..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value.toLowerCase())}
+              className="pl-8 w-full"
+            />
+          </div>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Número</TableHead>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead>Data Pedido</TableHead>
+                  <TableHead>Data Entrega</TableHead>
+                  <TableHead>Vencimento</TableHead>
+                  <TableHead>Status Envio</TableHead>
+                  <TableHead>Status Pagamento</TableHead>
+                  <TableHead>Total</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {pedidos
+                  .filter((pedido) => {
+                    if (!searchTerm) return true;
+                    const clienteLower = pedido.clienteNome.toLowerCase();
+                    const statusLower = pedido.status.toLowerCase();
+                    return (
+                      clienteLower.includes(searchTerm) ||
+                      statusLower.includes(searchTerm)
+                    );
+                  })
+                  .map((pedido) => (
+                    <TableRow key={pedido.id}>
+                      <TableCell>{pedido.numeroPedido}</TableCell>
+                      <TableCell>{pedido.clienteNome}</TableCell>
+                      <TableCell>{pedido.dataPedido}</TableCell>
+                      <TableCell>{pedido.dataEntrega || "-"}</TableCell>
+                      <TableCell>
+                        {pedido.formaPagamento === "A prazo" &&
+                        pedido.dataVencimento
+                          ? formatarDataISOParaBrasil(pedido.dataVencimento)
+                          : "-"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          className={
+                            pedido.status === "concluido"
+                              ? "bg-green-500 text-white"
+                              : pedido.status === "pendente"
+                              ? "bg-yellow-400 text-black"
+                              : pedido.status === "processando"
+                              ? "bg-blue-500 text-white"
+                              : "bg-red-500 text-white"
+                          }
+                        >
+                          {pedido.status.charAt(0).toUpperCase() +
+                            pedido.status.slice(1)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {pedido.statusPagamento === "Pago" ? (
+                          <Badge className="bg-green-600 text-white">
+                            Pago
+                          </Badge>
+                        ) : pedido.statusPagamento === "Não Pago" ? (
+                          <Badge className="bg-red-400 text-black">
+                            Não Pago
+                          </Badge>
+                        ) : (
+                          "-"
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        R${" "}
+                        {pedido.total.toLocaleString("pt-BR", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </TableCell>
+                      <TableCell className="text-right flex gap-2 justify-end flex-wrap">
                         <Button
-                          variant="secondary"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleEdit(pedido)}
+                          title="Editar pedido"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => generatePedidoPDF(pedido)}
+                          title="Gerar PDF"
+                        >
+                          <FileText className="w-4 h-4" />
+                        </Button>
+                        {pedido.statusPagamento === "Não Pago" && (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={async () => {
+                              if (confirm("Marcar esse pedido como PAGO?")) {
+                                try {
+                                  const pedidoRef = doc(
+                                    db,
+                                    "pedidos",
+                                    pedido.id
+                                  );
+                                  await updateDoc(pedidoRef, {
+                                    statusPagamento: "Pago",
+                                  });
+                                  fetchPedidos();
+                                } catch (error) {
+                                  console.error(error);
+                                  alert("Erro ao marcar como pago.");
+                                }
+                              }
+                            }}
+                            title="Marcar como Pago"
+                          >
+                            <BadgeCheck className="w-4 h-4" />
+                          </Button>
+                        )}
+                        <Button
+                          variant="destructive"
                           size="sm"
                           onClick={async () => {
-                            if (confirm("Marcar esse pedido como PAGO?")) {
+                            if (
+                              confirm(
+                                "Tem certeza que deseja excluir esse pedido? Essa ação é irreversível."
+                              )
+                            ) {
                               try {
-                                const pedidoRef = doc(db, "pedidos", pedido.id);
-                                await updateDoc(pedidoRef, { statusPagamento: "Pago" });
+                                await deleteDoc(doc(db, "pedidos", pedido.id));
+                                alert("Pedido excluído com sucesso!");
                                 fetchPedidos();
                               } catch (error) {
                                 console.error(error);
-                                alert("Erro ao marcar como pago.");
+                                alert("Erro ao excluir pedido.");
                               }
                             }
                           }}
-                          title="Marcar como Pago"
+                          title="Excluir pedido"
                         >
-                          <BadgeCheck className="w-4 h-4" />
+                          <Trash2 className="w-4 h-4" />
                         </Button>
-                      )}
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={async () => {
-                          if (
-                            confirm(
-                              "Tem certeza que deseja excluir esse pedido? Essa ação é irreversível."
-                            )
-                          ) {
-                            try {
-                              await deleteDoc(doc(db, "pedidos", pedido.id));
-                              alert("Pedido excluído com sucesso!");
-                              fetchPedidos();
-                            } catch (error) {
-                              console.error(error);
-                              alert("Erro ao excluir pedido.");
-                            }
-                          }
-                        }}
-                        title="Excluir pedido"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-            </TableBody>
-          </Table>
-        </div>
-      </CardContent>
-    </Card>
-  </div>
-);}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
