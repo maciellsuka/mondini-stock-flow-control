@@ -30,6 +30,7 @@ export interface Cliente {
   id: string;
   nome: string;
   cnpj: string;
+  ie?: string; // 🆕 Inscrição Estadual (opcional para compatibilidade com clientes antigos)
   telefone: string;
   endereco: string;
   bairro: string;
@@ -71,7 +72,6 @@ export interface Pedido {
   statusPagamento: "Pago" | "Não Pago";
   dataVencimento?: string;
 }
-
 
 export interface ProdutoComBags extends Produto {
   bags: Bag[];

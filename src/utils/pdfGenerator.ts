@@ -32,12 +32,29 @@ export const generatePedidoPDF = async (pedido: Pedido) => {
   const clienteSnap = await getDoc(clienteRef);
   const cliente = clienteSnap.exists() ? clienteSnap.data() : null;
 
+  // ✅ Formata datas sem interferência de fuso horário
+  const formatarDataLocal = (dateString?: string) => {
+    if (!dateString) return "-";
+    const [ano, mes, dia] = dateString.split("-").map(Number);
+    if (!ano || !mes || !dia) return "-";
+    return `${dia.toString().padStart(2, "0")}/${mes
+      .toString()
+      .padStart(2, "0")}/${ano}`;
+  };
+
+  // Busca os identificadores das bags usadas
   const identificadoresBags: Record<string, string> = {};
   for (const item of pedido.itens) {
     for (const bagUso of item.bagsUsadas) {
       if (!identificadoresBags[bagUso.bagId]) {
         try {
-          const bagRef = doc(db, "produtos", item.produtoId, "bags", bagUso.bagId);
+          const bagRef = doc(
+            db,
+            "produtos",
+            item.produtoId,
+            "bags",
+            bagUso.bagId
+          );
           const bagSnap = await getDoc(bagRef);
           identificadoresBags[bagUso.bagId] = bagSnap.exists()
             ? bagSnap.data().identificador || bagUso.bagId
@@ -49,6 +66,7 @@ export const generatePedidoPDF = async (pedido: Pedido) => {
     }
   }
 
+  // Monta uma via do pedido
   const montarVia = () => `
     <div class="via">
       <div class="header">
@@ -60,7 +78,7 @@ export const generatePedidoPDF = async (pedido: Pedido) => {
           <th>Pedido nº</th>
           <td>${pedido.numeroPedido || "-"}</td>
           <th>Emissão</th>
-          <td>${new Date(pedido.dataPedido).toLocaleDateString("pt-BR")}</td>
+          <td>${formatarDataLocal(pedido.dataPedido)}</td>
         </tr>
         <tr>
           <th>Cliente</th>
@@ -71,19 +89,21 @@ export const generatePedidoPDF = async (pedido: Pedido) => {
             ? `
         <tr>
           <th>Endereço</th>
-          <td>${cliente.endereco}</td>
+          <td>${cliente.endereco || "-"}</td>
           <th>Telefone</th>
-          <td>${cliente.telefone}</td>
+          <td>${cliente.telefone || "-"}</td>
         </tr>
         <tr>
           <th>Bairro</th>
-          <td>${cliente.bairro}</td>
+          <td>${cliente.bairro || "-"}</td>
           <th>Cidade</th>
-          <td>${cliente.cidade} - ${cliente.estado}</td>
+          <td>${cliente.cidade || "-"} - ${cliente.estado || "-"}</td>
         </tr>
         <tr>
           <th>CNPJ</th>
-          <td colspan="3">${cliente.cnpj}</td>
+          <td>${cliente.cnpj || "-"}</td>
+          <th>IE</th>
+          <td>${cliente.ie || "-"}</td>
         </tr>`
             : ""
         }
@@ -98,7 +118,11 @@ export const generatePedidoPDF = async (pedido: Pedido) => {
           </tr>
           <tr>
             <th>Data de Vencimento</th>
-            <td>${pedido.dataVencimento ? new Date(pedido.dataVencimento).toLocaleDateString("pt-BR") : "-"}</td>
+            <td>${
+              pedido.dataVencimento
+                ? formatarDataLocal(pedido.dataVencimento)
+                : "-"
+            }</td>
           </tr>`
               : `
           <tr>
@@ -106,7 +130,6 @@ export const generatePedidoPDF = async (pedido: Pedido) => {
             <td colspan="3">${pedido.formaPagamento || "-"}</td>
           </tr>`
           }
-
       </table>
 
       <table>
@@ -123,10 +146,19 @@ export const generatePedidoPDF = async (pedido: Pedido) => {
             .map((item) => {
               const itemHtml = `
                 <tr>
-                  <td>${item.quantidade.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td>${item.quantidade.toLocaleString("pt-BR", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}</td>
                   <td>${item.produtoNome}</td>
-                  <td>R$ ${item.precoUnitario.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                  <td>R$ ${item.subtotal.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td>R$ ${item.precoUnitario.toLocaleString("pt-BR", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}</td>
+                  <td>R$ ${item.subtotal.toLocaleString("pt-BR", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}</td>
                 </tr>
               `;
               const bagsHtml = item.bagsUsadas
@@ -134,7 +166,12 @@ export const generatePedidoPDF = async (pedido: Pedido) => {
                   (bag) => `
                 <tr style="font-size:12px;color:#555;">
                   <td colspan="4" style="padding-left:20px;">
-                    ↳ Bag <strong>${identificadoresBags[bag.bagId]}</strong> — ${bag.pesoUsado.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg
+                    ↳ Bag <strong>${
+                      identificadoresBags[bag.bagId]
+                    }</strong> — ${bag.pesoUsado.toLocaleString("pt-BR", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })} kg
                   </td>
                 </tr>`
                 )
@@ -144,7 +181,10 @@ export const generatePedidoPDF = async (pedido: Pedido) => {
             .join("")}
           <tr class="total">
             <td colspan="3">TOTAL GERAL</td>
-            <td>R$ ${pedido.total.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            <td>R$ ${pedido.total.toLocaleString("pt-BR", {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}</td>
           </tr>
         </tbody>
       </table>
@@ -157,6 +197,7 @@ export const generatePedidoPDF = async (pedido: Pedido) => {
     </div>
   `;
 
+  // HTML final (duas vias + rodapé com IE da empresa)
   const html = `
     <!DOCTYPE html>
     <html>
@@ -214,7 +255,6 @@ export const generatePedidoPDF = async (pedido: Pedido) => {
             padding-top: 8px;
           }
 
-          /* 🔶 Força a impressão aplicar os estilos corretamente */
           @media print {
             th {
               background: #e0e0e0 !important;
@@ -230,22 +270,22 @@ export const generatePedidoPDF = async (pedido: Pedido) => {
         <div class="corte"></div>
         ${montarVia()}
         <div class="footer">
-          Documento gerado em ${new Date().toLocaleDateString("pt-BR")} às ${new Date().toLocaleTimeString("pt-BR")}<br/>
+          Documento gerado em ${new Date().toLocaleDateString(
+            "pt-BR"
+          )} às ${new Date().toLocaleTimeString("pt-BR")}<br/>
           Avenida Coronel Antonio Estanislau do Amaral, 544 - B. Itaici<br/>
-          CNPJ: 39.694.722/0001-29 - IE: 353.439.082.115 - TELEFONE (19) 97403-9792
+          CNPJ: 39.694.722/0001-29 — IE: 353.439.082.115 — TELEFONE (19) 97403-9792
         </div>
       </body>
     </html>
   `;
 
   const newTab = window.open("", "_blank");
-    if (!newTab) {
-      alert("Por favor, permita pop-ups para visualizar o PDF");
-      return;
-    }
+  if (!newTab) {
+    alert("Por favor, permita pop-ups para visualizar o PDF");
+    return;
+  }
 
-    newTab.document.write(html);
-    newTab.document.close();
-      
+  newTab.document.write(html);
+  newTab.document.close();
 };
-

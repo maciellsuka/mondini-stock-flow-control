@@ -1,6 +1,13 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs } from "firebase/firestore";
+import {
+  collection,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+  getDocs,
+} from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Plus, Search, Edit, Trash2, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -30,10 +37,11 @@ export default function Clientes() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingCliente, setEditingCliente] = useState<Cliente | null>(null);
-  const [formData, setFormData] = useState<Omit<Cliente, "id" | "dataCadastro">>({
+  const [formData, setFormData] = useState<Omit<Cliente, "id">>({
     nome: "",
     telefone: "",
     cnpj: "",
+    ie: "",
     endereco: "",
     bairro: "",
     cidade: "",
@@ -56,19 +64,28 @@ export default function Clientes() {
     }
   }
 
-  const { data: clientes = [], isLoading: isLoadingClientes } = useQuery<Cliente[]>({
+  const { data: clientes = [], isLoading: isLoadingClientes } = useQuery<
+    Cliente[]
+  >({
     queryKey: ["clientes"],
     queryFn: async () => {
       const snapshot = await getDocs(collection(db, "clientes"));
-      return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as Cliente));
+      return snapshot.docs.map(
+        (doc) => ({ id: doc.id, ...doc.data() } as Cliente)
+      );
     },
   });
 
   const addOrUpdateClienteMutation = useMutation({
     mutationFn: async () => {
-      if (!formData.nome.trim() || !formData.telefone.trim() || !formData.cnpj.trim()) {
+      if (
+        !formData.nome.trim() ||
+        !formData.telefone.trim() ||
+        !formData.cnpj.trim()
+      ) {
         throw new Error("Nome, telefone e CNPJ são obrigatórios.");
       }
+
       if (editingCliente) {
         await updateDoc(doc(db, "clientes", editingCliente.id), formData);
       } else {
@@ -83,8 +100,12 @@ export default function Clientes() {
       setIsDialogOpen(false);
       resetForm();
     },
-    onError: (error: any) => {
-      alert(error.message || "Erro ao salvar cliente.");
+    onError: (error: unknown) => {
+      if (error instanceof Error) {
+        alert(error.message);
+      } else {
+        alert("Erro ao salvar cliente.");
+      }
     },
   });
 
@@ -102,6 +123,7 @@ export default function Clientes() {
       nome: "",
       telefone: "",
       cnpj: "",
+      ie: "",
       endereco: "",
       bairro: "",
       cidade: "",
@@ -117,6 +139,7 @@ export default function Clientes() {
       nome: cliente.nome,
       telefone: cliente.telefone,
       cnpj: cliente.cnpj,
+      ie: cliente.ie || "",
       endereco: cliente.endereco,
       bairro: cliente.bairro,
       cidade: cliente.cidade,
@@ -126,10 +149,11 @@ export default function Clientes() {
     setIsDialogOpen(true);
   };
 
-  const filteredClientes = clientes.filter((cliente) =>
-    cliente.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    cliente.telefone.includes(searchTerm) ||
-    cliente.cnpj.includes(searchTerm)
+  const filteredClientes = clientes.filter(
+    (cliente) =>
+      cliente.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      cliente.telefone.includes(searchTerm) ||
+      cliente.cnpj.includes(searchTerm)
   );
 
   const { isPending: isSaving } = addOrUpdateClienteMutation;
@@ -154,37 +178,61 @@ export default function Clientes() {
                 {editingCliente ? "Editar Cliente" : "Novo Cliente"}
               </DialogTitle>
             </DialogHeader>
+
+            {/* Formulário */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="nome">Nome *</Label>
                 <Input
                   id="nome"
                   value={formData.nome}
-                  onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, nome: e.target.value })
+                  }
                 />
               </div>
+
               <div className="space-y-2">
                 <Label htmlFor="telefone">Telefone *</Label>
                 <Input
                   id="telefone"
                   value={formData.telefone}
-                  onChange={(e) => setFormData({ ...formData, telefone: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, telefone: e.target.value })
+                  }
                 />
               </div>
+
               <div className="space-y-2">
                 <Label htmlFor="cnpj">CNPJ *</Label>
                 <Input
                   id="cnpj"
                   value={formData.cnpj}
-                  onChange={(e) => setFormData({ ...formData, cnpj: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, cnpj: e.target.value })
+                  }
                 />
               </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="ie">Inscrição Estadual (IE)</Label>
+                <Input
+                  id="ie"
+                  value={formData.ie || ""}
+                  onChange={(e) =>
+                    setFormData({ ...formData, ie: e.target.value })
+                  }
+                />
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="cep">CEP</Label>
                 <Input
                   id="cep"
                   value={formData.cep}
-                  onChange={(e) => setFormData({ ...formData, cep: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, cep: e.target.value })
+                  }
                   onBlur={async () => {
                     const dados = await buscarCep(formData.cep);
                     if (dados) {
@@ -195,50 +243,70 @@ export default function Clientes() {
                         cidade: dados.localidade || "",
                         estado: dados.uf || "",
                       }));
-                    } else if(formData.cep.trim().length > 0) {
+                    } else if (formData.cep.trim().length > 0) {
                       alert("CEP inválido ou não encontrado");
                     }
                   }}
                 />
               </div>
+
               <div className="space-y-2">
                 <Label htmlFor="bairro">Bairro</Label>
                 <Input
                   id="bairro"
                   value={formData.bairro}
-                  onChange={(e) => setFormData({ ...formData, bairro: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, bairro: e.target.value })
+                  }
                 />
               </div>
+
               <div className="space-y-2 col-span-2">
                 <Label htmlFor="endereco">Endereço</Label>
                 <Input
                   id="endereco"
                   value={formData.endereco}
-                  onChange={(e) => setFormData({ ...formData, endereco: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, endereco: e.target.value })
+                  }
                 />
               </div>
+
               <div className="space-y-2">
                 <Label htmlFor="cidade">Cidade</Label>
                 <Input
                   id="cidade"
                   value={formData.cidade}
-                  onChange={(e) => setFormData({ ...formData, cidade: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, cidade: e.target.value })
+                  }
                 />
               </div>
+
               <div className="space-y-2">
                 <Label htmlFor="estado">Estado</Label>
                 <Input
                   id="estado"
                   value={formData.estado}
-                  onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, estado: e.target.value })
+                  }
                 />
               </div>
             </div>
+
             <div className="flex justify-end gap-2 mt-4">
-              <Button variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSaving}>
+              <Button
+                variant="outline"
+                onClick={() => setIsDialogOpen(false)}
+                disabled={isSaving}
+              >
                 Cancelar
               </Button>
-              <Button onClick={() => addOrUpdateClienteMutation.mutate()} disabled={isSaving}>
+              <Button
+                onClick={() => addOrUpdateClienteMutation.mutate()}
+                disabled={isSaving}
+              >
                 {editingCliente ? "Atualizar" : "Salvar"}
               </Button>
             </div>
@@ -249,7 +317,9 @@ export default function Clientes() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total de Clientes</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Total de Clientes
+            </CardTitle>
             <User className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -285,7 +355,9 @@ export default function Clientes() {
                 <TableRow key={cliente.id}>
                   <TableCell className="font-medium">{cliente.nome}</TableCell>
                   <TableCell>{cliente.telefone}</TableCell>
-                  <TableCell>{cliente.cidade}, {cliente.estado}</TableCell>
+                  <TableCell>
+                    {cliente.cidade}, {cliente.estado}
+                  </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
                       <Button
