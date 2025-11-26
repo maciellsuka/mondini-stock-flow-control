@@ -762,12 +762,13 @@ export default function Pedidos() {
                             className="flex items-center gap-3 mb-1"
                           >
                             <input
-                              className="w-full"
                               type="checkbox"
                               checked={bag.selecionada}
                               onChange={() => toggleBagSelecionada(bag.bagId)}
                               id={`checkbox-${bag.bagId}`}
+                              className="h-4 w-4" // tamanho correto da checkbox
                             />
+
                             <label
                               htmlFor={`checkbox-${bag.bagId}`}
                               className="flex-1"
