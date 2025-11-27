@@ -21,13 +21,7 @@ import {
   Download,
 } from "lucide-react";
 import { StatCard } from "@/components/StatCard";
-import {
-  ProdutoComBags,
-  Pedido,
-  Cliente,
-  Bag,
-  ProdutoNoPedido,
-} from "@/models/firebaseModels";
+import { ProdutoComBags, Pedido, Cliente, Bag } from "@/models/firebaseModels";
 import { Button } from "@/components/ui/button";
 
 import { Input } from "@/components/ui/input";
@@ -40,27 +34,34 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 
-const mesesPt = [
-  "jan",
-  "fev",
-  "mar",
-  "abr",
-  "mai",
-  "jun",
-  "jul",
-  "ago",
-  "set",
-  "out",
-  "nov",
-  "dez",
-];
-
-// Função para parse do mês
-const parseMes = (mesLabel: string) => {
-  const [mesAbrev, ano] = mesLabel.replace(".", "").split(" ");
-  const index = mesesPt.indexOf(mesAbrev.toLowerCase());
-  return { index, ano: Number(ano) };
+// ===== MAPA DE MESES PT-BR =====
+const meses = {
+  Jan: 0,
+  Fev: 1,
+  Mar: 2,
+  Abr: 3,
+  Mai: 4,
+  Jun: 5,
+  Jul: 6,
+  Ago: 7,
+  Set: 8,
+  Out: 9,
+  Nov: 10,
+  Dez: 11,
 };
+
+function parseMesLabel(label: string) {
+  const clean = label.replace(".", "").replace("de", "").trim();
+  const partes = clean.split(/[\s-]+/);
+  const mesAbrev = partes[0].slice(0, 3).toLowerCase();
+  const ano = Number(partes[1]);
+
+  const key = Object.keys(meses).find((m) =>
+    m.toLowerCase().startsWith(mesAbrev)
+  ) as keyof typeof meses;
+
+  return { mes: meses[key], ano };
+}
 
 export default function Dashboard() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -73,7 +74,7 @@ export default function Dashboard() {
     { nomeProd: string; totalKg: number }[]
   >([]);
 
-  // --- filtros ---
+  // ===== FILTROS =====
   const todayISO = new Date().toISOString().slice(0, 10);
   const sixMonthsAgo = (() => {
     const d = new Date();
@@ -82,16 +83,21 @@ export default function Dashboard() {
     return d.toISOString().slice(0, 10);
   })();
 
-  const [dataInicial, setDataInicial] = useState<string>(sixMonthsAgo);
-  const [dataFinal, setDataFinal] = useState<string>(todayISO);
-  const [filtroCliente, setFiltroCliente] = useState<string>("");
-  const [filtroProduto, setFiltroProduto] = useState<string>("");
-  const [filtroStatus, setFiltroStatus] = useState<string>("");
-  const [filtroFormaPagamento, setFiltroFormaPagamento] = useState<string>("");
+  const formatarMoedaBR = (valor: number) => {
+    return valor.toLocaleString("pt-BR", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  };
 
-  // ============================
-  // fetch inicial
-  // ============================
+  const [dataInicial, setDataInicial] = useState(sixMonthsAgo);
+  const [dataFinal, setDataFinal] = useState(todayISO);
+  const [filtroCliente, setFiltroCliente] = useState("");
+  const [filtroProduto, setFiltroProduto] = useState("");
+  const [filtroStatus, setFiltroStatus] = useState("");
+  const [filtroFormaPagamento, setFiltroFormaPagamento] = useState("");
+
+  // ================= FETCH =================
   useEffect(() => {
     const fetchData = async () => {
       const [clientesSnap, produtosSnap, pedidosSnap] = await Promise.all([
@@ -100,20 +106,20 @@ export default function Dashboard() {
         getDocs(collection(db, "pedidos")),
       ]);
 
-      // clientes
-      const clientesData: Cliente[] = clientesSnap.docs.map((doc) => ({
-        ...(doc.data() as Cliente),
-        id: doc.id,
-      }));
-      setClientes(clientesData);
+      // CLIENTES
+      setClientes(
+        clientesSnap.docs.map((d) => ({ ...(d.data() as Cliente), id: d.id }))
+      );
 
-      // produtos + bags
+      // PRODUTOS
       const produtosData: ProdutoComBags[] = [];
+
       for (const docSnap of produtosSnap.docs) {
         const data = docSnap.data();
         const bagsSnap = await getDocs(
           collection(db, `produtos/${docSnap.id}/bags`)
         );
+
         const bags: Bag[] = bagsSnap.docs.map((b) => ({
           id: b.id,
           produtoId: docSnap.id,
@@ -125,48 +131,25 @@ export default function Dashboard() {
 
         produtosData.push({
           id: docSnap.id,
-          nomeProd: data.nomeProd,
-          precoPorKg: data.precoPorKg,
-          tipo: data.tipo,
+          ...data,
           bags,
-        });
+        } as ProdutoComBags);
       }
+
       setProdutos(produtosData);
 
-      // pedidos
-      const pedidosData: Pedido[] = pedidosSnap.docs.map((doc) => ({
-        ...(doc.data() as Pedido),
-        id: doc.id,
-      }));
+      // PEDIDOS
+      const pedidosData = pedidosSnap.docs.map(
+        (d) => ({ ...(d.data() as Pedido), id: d.id } as Pedido)
+      );
+
       setPedidos(pedidosData);
 
-      // faturamento inicial (todos os pedidos) - ordenado por mês real
-      const mesesMap = new Map<string, number>();
-      pedidosData.forEach((p) => {
-        const mes = new Date(p.dataPedido).toLocaleDateString("pt-BR", {
-          month: "short",
-          year: "numeric",
-        });
-        mesesMap.set(
-          mes,
-          (mesesMap.get(mes) || 0) + (typeof p.total === "number" ? p.total : 0)
-        );
-      });
-      const fatur = Array.from(mesesMap.entries()).map(([mes, total]) => ({
-        mes,
-        total,
-      }));
-      // Ordenação usando parseMes
-      fatur.sort((a, b) => {
-        const A = parseMes(a.mes);
-        const B = parseMes(b.mes);
-        if (A.ano !== B.ano) return A.ano - B.ano;
-        return A.index - B.index;
-      });
-      setFaturamentoPorMes(fatur);
+      // GRÁFICO INICIAL
+      atualizarGrafico(pedidosData);
 
-      // top 5 estoque baixo
-      const top5 = produtosData
+      // TOP 5
+      const top = produtosData
         .map((p) => ({
           nomeProd: p.nomeProd,
           totalKg: p.bags
@@ -175,43 +158,29 @@ export default function Dashboard() {
         }))
         .sort((a, b) => a.totalKg - b.totalKg)
         .slice(0, 5);
-      setTopBaixoEstoque(top5);
+
+      setTopBaixoEstoque(top);
     };
 
     fetchData();
   }, []);
 
-  // ============================
-  // dados filtrados (pedidos) — MEMO
-  // ============================
+  // ================= FILTRO =================
   const filteredPedidos = useMemo(() => {
-    const start = dataInicial ? new Date(dataInicial + "T00:00:00") : null;
-    const end = dataFinal ? new Date(dataFinal + "T23:59:59") : null;
-
     return pedidos.filter((p) => {
-      // dataPedido é string yyyy-mm-dd
-      const pd = p.dataPedido ? new Date(p.dataPedido + "T12:00:00") : null;
-      if (start && (!pd || pd < start)) return false;
-      if (end && (!pd || pd > end)) return false;
-
-      if (filtroCliente && filtroCliente !== "") {
-        if (p.clienteId !== filtroCliente) return false;
+      const pd = new Date(p.dataPedido + "T12:00:00");
+      if (dataInicial && pd < new Date(dataInicial)) return false;
+      if (dataFinal && pd > new Date(dataFinal + "T23:59:59")) return false;
+      if (filtroCliente && p.clienteId !== filtroCliente) return false;
+      if (filtroStatus && p.status !== filtroStatus) return false;
+      if (filtroFormaPagamento && p.formaPagamento !== filtroFormaPagamento)
+        return false;
+      if (filtroProduto) {
+        const itens = (p as any).itens || p.produtos || [];
+        return itens.some(
+          (i: any) => i.produtoId === filtroProduto || i.id === filtroProduto
+        );
       }
-
-      if (filtroStatus && filtroStatus !== "") {
-        if (p.status !== filtroStatus) return false;
-      }
-
-      if (filtroFormaPagamento && filtroFormaPagamento !== "") {
-        if ((p.formaPagamento || "") !== filtroFormaPagamento) return false;
-      }
-
-      if (filtroProduto && filtroProduto !== "") {
-        const itens = Array.isArray(p.produtos) ? p.produtos : [];
-        const hasProduto = itens.some((it) => it.id === filtroProduto);
-        if (!hasProduto) return false;
-      }
-
       return true;
     });
   }, [
@@ -224,305 +193,229 @@ export default function Dashboard() {
     filtroFormaPagamento,
   ]);
 
-  // ============================
-  // cards (derivados do filteredPedidos)
-  // ============================
-  const totalClientes = clientes.length;
-  const produtosEmEstoque = produtos.length;
-  const pedidosDoPeriodo = filteredPedidos.length;
-  const faturamentoTotalPeriodo = filteredPedidos.reduce(
-    (acc, p) => acc + (typeof p.total === "number" ? p.total : 0),
-    0
-  );
+  // ================= GRÁFICO =================
+  const atualizarGrafico = (lista: Pedido[]) => {
+    const map = new Map<string, number>();
 
-  // ============================
-  // atualizar gráfico quando filteredPedidos muda
-  // ============================
-  useEffect(() => {
-    const mesesMap = new Map<string, number>();
-    for (const pedido of filteredPedidos) {
-      const mes = new Date(pedido.dataPedido).toLocaleDateString("pt-BR", {
+    lista.forEach((p) => {
+      const label = new Date(p.dataPedido).toLocaleDateString("pt-BR", {
         month: "short",
         year: "numeric",
       });
-      mesesMap.set(
-        mes,
-        (mesesMap.get(mes) || 0) +
-          (typeof pedido.total === "number" ? pedido.total : 0)
-      );
-    }
 
-    const arr = Array.from(mesesMap.entries()).map(([mes, total]) => ({
+      map.set(label, (map.get(label) || 0) + (p.total || 0));
+    });
+
+    const arr = Array.from(map.entries()).map(([mes, total]) => ({
       mes,
       total,
     }));
-    // Ordenação usando parseMes
+
     arr.sort((a, b) => {
-      const A = parseMes(a.mes);
-      const B = parseMes(b.mes);
-      if (A.ano !== B.ano) return A.ano - B.ano;
-      return A.index - B.index;
+      const A = parseMesLabel(a.mes);
+      const B = parseMesLabel(b.mes);
+      return A.ano !== B.ano ? A.ano - B.ano : A.mes - B.mes;
     });
 
     setFaturamentoPorMes(arr);
-  }, [filteredPedidos]);
+  };
 
-  // ============================
-  // EXPORT CSV (TIPADO) — ordenado por dataPedido DESC
-  // ============================
+  useEffect(() => atualizarGrafico(filteredPedidos), [filteredPedidos]);
+
+  // ================= CARDS =================
+  const faturamentoTotalPeriodo = filteredPedidos.reduce(
+    (acc, p) => acc + (p.total || 0),
+    0
+  );
+
+  // ================= EXPORT CSV (IDENTIFICADOR) =================
+  const encontrarIdentificadorBag = (produtoId: string, bagId: string) => {
+    const produto = produtos.find((p) => p.id === produtoId);
+    const bag = produto?.bags.find((b) => b.id === bagId);
+    return bag?.identificador || bagId;
+  };
+
   const exportarCSV = () => {
-    if (!pedidos || pedidos.length === 0) {
-      console.error("Sem pedidos para exportar");
-      return;
-    }
+    const base = filteredPedidos.length ? filteredPedidos : pedidos;
+    const linhas: any[] = [];
 
-    // ordenar por dataPedido (mais novos primeiro)
-    const pedidosOrdenados = [...pedidos].sort((a, b) => {
-      const da = new Date(a.dataPedido).getTime();
-      const db = new Date(b.dataPedido).getTime();
-      return db - da;
-    });
+    base.forEach((pedido) => {
+      const itens = (pedido as any).itens || pedido.produtos || [];
+      if (!itens.length) return;
 
-    const linhas = pedidosOrdenados.flatMap((pedido) => {
-      const produtosNoPedido: ProdutoNoPedido[] = Array.isArray(pedido.produtos)
-        ? pedido.produtos
-        : [];
+      itens.forEach((item: any) => {
+        const bags = item.bagsUsadas || item.bags || [];
 
-      return produtosNoPedido.map((prod) => {
-        const qtdBags = prod.bags?.length ?? 0;
-        const pesoTotalKg =
-          prod.bags?.reduce((s, b) => s + (b.pesoKg ?? 0), 0) ?? 0;
-        const listaBags = (prod.bags ?? [])
-          .map((b) => {
-            // achar identificador na coleção de produtos (produtos state)
-            const produtoLocal = produtos.find((p) => p.id === prod.id);
-            const bagInfo = produtoLocal?.bags.find((bx) => bx.id === b.bagId);
-            const identificador = bagInfo?.identificador ?? b.bagId;
-            return `${identificador} (${b.pesoKg}kg)`;
-          })
-          .join(" | ");
-
-        // subtotal do produto = soma dos campos total das bags (modelo firebaseModels usa b.total)
-        const subtotalNumber = (prod.bags ?? []).reduce(
-          (s, b) => s + (b.total ?? 0),
+        const pesoTotal = bags.reduce(
+          (s: number, b: any) => s + (b.pesoUsado || b.pesoKg || 0),
           0
         );
 
-        return {
-          NumeroPedido: pedido.numeroPedido ?? "",
-          Cliente: pedido.clienteNome ?? "",
-          DataPedido: pedido.dataPedido ?? "",
-          Produto: prod.nomeProd ?? "",
-          qtdBags,
-          pesoTotalKg: Number(pesoTotalKg.toFixed(3)), // 3 casas para evitar perda em kg
-          bags: listaBags,
-          FormaPagamento: pedido.formaPagamento ?? "",
-          StatusPagamento: pedido.statusPagamento ?? "",
-          Status: pedido.status ?? "",
-          Observacoes: pedido.observacoes ?? "",
-          DataVencimento: pedido.dataVencimento ?? "",
-          TotalPedido: Number(subtotalNumber.toFixed(2)),
-        };
+        const lista = bags
+          .map((b: any) => {
+            const identificador = encontrarIdentificadorBag(
+              item.produtoId || item.id,
+              b.bagId
+            );
+            return `${identificador} (${b.pesoUsado || b.pesoKg}kg)`;
+          })
+          .join(" | ");
+
+        linhas.push({
+          numeroPedido: pedido.numeroPedido,
+          cliente: pedido.clienteNome,
+          dataPedido: pedido.dataPedido,
+          produto: item.produtoNome || item.nomeProd,
+          qtdBags: bags.length,
+          pesoTotalKg: formatarMoedaBR(Number(pesoTotal.toFixed(2))),
+          bags: lista,
+          subtotal: formatarMoedaBR(item.subtotal) || 0,
+          status: pedido.status,
+          totalPedido: formatarMoedaBR(pedido.total),
+        });
       });
     });
 
-    if (linhas.length === 0) {
-      console.error("Nenhum item encontrado nos pedidos");
+    if (!linhas.length) {
+      alert("Nenhuma linha válida para exportar.");
       return;
     }
 
-    // construir CSV (ponto decimal com vírgula para pt-BR se preferir; aqui uso padrão numérico com .)
-    const cabecalho = Object.keys(linhas[0]);
-    const corpo = linhas
+    const head = Object.keys(linhas[0]);
+    const body = linhas
       .map((row) =>
-        cabecalho
-          .map((key) => {
-            const val = row[key as keyof typeof row];
-            // escapar " dentro do CSV
-            if (val === null || val === undefined) return '""';
-            if (typeof val === "number") return `"${val.toString()}"`;
-            return `"${String(val).replace(/"/g, '""')}"`;
-          })
+        head
+          .map((k) => `"${String(row[k] ?? "").replace(/"/g, '""')}"`)
           .join(";")
       )
       .join("\n");
 
-    const csvContent = cabecalho.join(";") + "\n" + corpo;
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
+    const csv = head.join(";") + "\n" + body;
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
-    link.href = url;
+
+    link.href = URL.createObjectURL(blob);
     link.download = "pedidos.csv";
     link.click();
   };
 
-  // ============================
-  // RENDER
-  // ============================
+  // ================= RENDER =================
   return (
     <div className="p-6 space-y-6">
-      {/* HEADER + FILTROS */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Dashboard</h1>
-          <p className="text-muted-foreground">
-            Visão geral do sistema MONDINI
-          </p>
-        </div>
-
-        {/* Filtros: reorganizado para responsividade */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:flex lg:flex-wrap lg:gap-4">
-          {/* período */}
-          <div className="flex flex-col w-full max-w-[220px]">
-            <Label>Período - Início</Label>
+      {/* FILTROS */}
+      <div className="flex flex-wrap gap-3 items-end">
+        {[
+          ["Início", dataInicial, setDataInicial],
+          ["Fim", dataFinal, setDataFinal],
+        ].map(([label, value, setter]: any, i) => (
+          <div key={i} className="w-full sm:w-[160px]">
+            <Label>{label}</Label>
             <Input
               type="date"
-              value={dataInicial}
-              onChange={(e) => setDataInicial(e.target.value)}
-              className="w-full"
+              value={value}
+              onChange={(e) => setter(e.target.value)}
             />
           </div>
-          <div className="flex flex-col w-full max-w-[220px]">
-            <Label>Período - Fim</Label>
-            <Input
-              type="date"
-              value={dataFinal}
-              onChange={(e) => setDataFinal(e.target.value)}
-              className="w-full"
-            />
-          </div>
+        ))}
 
-          {/* cliente */}
-          <div className="flex flex-col w-full max-w-[220px]">
-            <Label>Cliente</Label>
+        {[
+          ["Cliente", filtroCliente, setFiltroCliente, clientes, "nome"],
+          ["Produto", filtroProduto, setFiltroProduto, produtos, "nomeProd"],
+        ].map(([label, val, set, lista, campo]: any, i) => (
+          <div key={i} className="w-full sm:w-[180px]">
+            <Label>{label}</Label>
             <Select
-              value={filtroCliente || "all"}
-              onValueChange={(v) => setFiltroCliente(v === "all" ? "" : v)}
+              value={val || "all"}
+              onValueChange={(v) => set(v === "all" ? "" : v)}
             >
-              <SelectTrigger className="w-full min-w-[180px]">
-                <SelectValue placeholder="Todos os clientes" />
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Todos" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todos os clientes</SelectItem>
-                {clientes.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.nome}
+                <SelectItem value="all">Todos</SelectItem>
+                {lista.map((i: any) => (
+                  <SelectItem key={i.id} value={i.id}>
+                    {i[campo]}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
+        ))}
 
-          {/* produto */}
-          <div className="flex flex-col w-full max-w-[220px]">
-            <Label>Produto</Label>
+        {[
+          [
+            "Status",
+            filtroStatus,
+            setFiltroStatus,
+            ["pendente", "processando", "concluido", "cancelado"],
+          ],
+          [
+            "Pagamento",
+            filtroFormaPagamento,
+            setFiltroFormaPagamento,
+            ["À vista", "A prazo"],
+          ],
+        ].map(([label, val, set, lista]: any, i) => (
+          <div key={i} className="w-full sm:w-[160px]">
+            <Label>{label}</Label>
             <Select
-              value={filtroProduto || "all"}
-              onValueChange={(v) => setFiltroProduto(v === "all" ? "" : v)}
+              value={val || "all"}
+              onValueChange={(v) => set(v === "all" ? "" : v)}
             >
-              <SelectTrigger className="w-full min-w-[180px]">
-                <SelectValue placeholder="Todos os produtos" />
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Todos" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todos os produtos</SelectItem>
-                {produtos.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.nomeProd}
+                <SelectItem value="all">Todos</SelectItem>
+                {lista.map((i: string) => (
+                  <SelectItem key={i} value={i}>
+                    {i}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
+        ))}
 
-          {/* status */}
-          <div className="flex flex-col w-full max-w-[220px]">
-            <Label>Status</Label>
-            <Select
-              value={filtroStatus || "all"}
-              onValueChange={(v) => setFiltroStatus(v === "all" ? "" : v)}
-            >
-              <SelectTrigger className="w-full min-w-[180px]">
-                <SelectValue placeholder="Todos" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos</SelectItem>
-                <SelectItem value="pendente">Pendente</SelectItem>
-                <SelectItem value="processando">Processando</SelectItem>
-                <SelectItem value="concluido">Concluído</SelectItem>
-                <SelectItem value="cancelado">Cancelado</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => {
+              setDataInicial(sixMonthsAgo);
+              setDataFinal(todayISO);
+              setFiltroCliente("");
+              setFiltroProduto("");
+              setFiltroStatus("");
+              setFiltroFormaPagamento("");
+            }}
+          >
+            Limpar
+          </Button>
 
-          {/* forma de pagamento */}
-          <div className="flex flex-col w-full max-w-[220px]">
-            <Label>Forma de pagamento</Label>
-            <Select
-              value={filtroFormaPagamento || "all"}
-              onValueChange={(v) =>
-                setFiltroFormaPagamento(v === "all" ? "" : v)
-              }
-            >
-              <SelectTrigger className="w-full min-w-[180px]">
-                <SelectValue placeholder="Todos" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos</SelectItem>
-                <SelectItem value="À vista">À vista</SelectItem>
-                <SelectItem value="A prazo">A prazo</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* buttons */}
-          <div className="flex items-center gap-2 w-full max-w-[220px]">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setDataInicial(sixMonthsAgo);
-                setDataFinal(todayISO);
-                setFiltroCliente("");
-                setFiltroProduto("");
-                setFiltroStatus("");
-                setFiltroFormaPagamento("");
-              }}
-              className="w-full"
-            >
-              Limpar
-            </Button>
-
-            <Button variant="outline" onClick={exportarCSV} className="w-full">
-              <Download className="w-4 h-4 mr-2" />
-              Exportar Pedidos
-            </Button>
-          </div>
+          <Button variant="outline" onClick={exportarCSV}>
+            <Download className="w-4 h-4 mr-2" />
+            Exportar
+          </Button>
         </div>
       </div>
 
       {/* CARDS */}
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <StatCard title="Clientes" value={clientes.length} icon={Users} />
+        <StatCard title="Produtos" value={produtos.length} icon={Package} />
         <StatCard
-          title="Total de Clientes"
-          value={String(totalClientes)}
-          icon={Users}
-        />
-        <StatCard
-          title="Produtos em Estoque"
-          value={String(produtosEmEstoque)}
-          icon={Package}
-        />
-        <StatCard
-          title="Pedidos (filtrados)"
-          value={String(pedidosDoPeriodo)}
+          title="Pedidos"
+          value={filteredPedidos.length}
           icon={FileText}
         />
         <StatCard
-          title="Estoque Baixo"
-          value={String(topBaixoEstoque.length)}
+          title="Estoque baixo"
+          value={topBaixoEstoque.length}
           icon={AlertTriangle}
         />
         <StatCard
-          title="Faturamento (filtrado)"
+          title="Faturamento"
           value={`R$ ${faturamentoTotalPeriodo.toLocaleString("pt-BR", {
             minimumFractionDigits: 2,
           })}`}
@@ -537,27 +430,17 @@ export default function Dashboard() {
         </CardHeader>
         <CardContent>
           <ResponsiveContainer width="100%" height={320}>
-            <BarChart data={faturamentoPorMes}>
+            <BarChart data={faturamentoPorMes} margin={{ top: 32 }}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="mes" />
               <YAxis tickFormatter={(v) => `R$ ${v.toLocaleString("pt-BR")}`} />
               <Tooltip
-                formatter={(v: number) =>
-                  `R$ ${v.toLocaleString("pt-BR", {
-                    minimumFractionDigits: 2,
-                  })}`
-                }
+                formatter={(v: number) => `R$ ${v.toLocaleString("pt-BR")}`}
               />
-              <Bar dataKey="total" fill="#2563eb" name="Faturamento">
+              <Bar dataKey="total" fill="#2563eb">
                 <LabelList
-                  dataKey="total"
                   position="top"
-                  offset={10}
-                  formatter={(v: number) =>
-                    `R$ ${Number(v).toLocaleString("pt-BR", {
-                      minimumFractionDigits: 2,
-                    })}`
-                  }
+                  formatter={(v: number) => `R$ ${v.toLocaleString("pt-BR")}`}
                 />
               </Bar>
             </BarChart>
@@ -565,24 +448,21 @@ export default function Dashboard() {
         </CardContent>
       </Card>
 
-      {/* TOP 5 ESTOQUE BAIXO */}
+      {/* TOP */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-amber-500" />
-            Top 5 Produtos com Menor Estoque
-          </CardTitle>
+          <CardTitle>Top 5 - Estoque Baixo</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-3">
-            {topBaixoEstoque.map((item, i) => (
+          <div className="space-y-2">
+            {topBaixoEstoque.map((i, idx) => (
               <div
-                key={i}
-                className="p-3 border rounded-md bg-amber-50 flex justify-between items-center"
+                key={idx}
+                className="flex justify-between border p-2 rounded"
               >
-                <p className="font-medium">{item.nomeProd}</p>
-                <span className="text-sm font-semibold text-red-600">
-                  {item.totalKg.toFixed(2)} kg
+                <span>{i.nomeProd}</span>
+                <span className="font-semibold text-red-500">
+                  {i.totalKg.toFixed(2)} kg
                 </span>
               </div>
             ))}
