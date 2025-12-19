@@ -1,17 +1,7 @@
 import { useState, useEffect } from "react";
-import {
-  collection,
-  getDocs,
-  doc,
-  updateDoc,
-} from "firebase/firestore";
+import { collection, getDocs, doc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardContent,
-} from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -35,7 +25,8 @@ import { ProdutoComBags, Bag } from "@/models/firebaseModels";
 
 export default function Estoque() {
   const [produtos, setProdutos] = useState<ProdutoComBags[]>([]);
-  const [produtoSelecionado, setProdutoSelecionado] = useState<ProdutoComBags | null>(null);
+  const [produtoSelecionado, setProdutoSelecionado] =
+    useState<ProdutoComBags | null>(null);
   const [mostrarVendidas, setMostrarVendidas] = useState(false); // indica se modal mostra vendido ou disponível
   const [bagEditando, setBagEditando] = useState<Bag | null>(null);
   const [pesoEdit, setPesoEdit] = useState("");
@@ -78,9 +69,13 @@ export default function Estoque() {
   const getStatusBadge = (status: Bag["status"]) => {
     switch (status) {
       case "disponivel":
-        return <Badge className="bg-green-100 text-green-800">Disponível</Badge>;
+        return (
+          <Badge className="bg-green-100 text-green-800">Disponível</Badge>
+        );
       case "reservado":
-        return <Badge className="bg-yellow-100 text-yellow-800">Reservado</Badge>;
+        return (
+          <Badge className="bg-yellow-100 text-yellow-800">Reservado</Badge>
+        );
       case "vendido":
         return <Badge className="bg-red-100 text-red-800">Vendido</Badge>;
     }
@@ -94,7 +89,13 @@ export default function Estoque() {
 
   const salvarBag = async () => {
     if (!bagEditando || !produtoSelecionado) return;
-    const ref = doc(db, "produtos", bagEditando.produtoId, "bags", bagEditando.id);
+    const ref = doc(
+      db,
+      "produtos",
+      bagEditando.produtoId,
+      "bags",
+      bagEditando.id
+    );
     await updateDoc(ref, {
       pesoKg: parseFloat(pesoEdit),
       status: statusEdit,
@@ -123,7 +124,9 @@ export default function Estoque() {
   return (
     <div className="p-6 space-y-8">
       <h1 className="text-3xl font-bold text-gray-900">Estoque</h1>
-      <p className="text-gray-500">Visualize os produtos e suas bags em estoque</p>
+      <p className="text-gray-500">
+        Visualize os produtos e suas bags em estoque
+      </p>
 
       {/* Estoque Disponível */}
       <section>
@@ -133,7 +136,10 @@ export default function Estoque() {
             const bagsDisponiveis = produto.bags.filter(
               (b) => b.status === "disponivel" || b.status === "reservado"
             );
-            const totalDisponivel = bagsDisponiveis.reduce((acc, b) => acc + b.pesoKg, 0);
+            const totalDisponivel = bagsDisponiveis.reduce(
+              (acc, b) => acc + b.pesoKg,
+              0
+            );
 
             const isLowStock = totalDisponivel < 10;
 
@@ -151,10 +157,16 @@ export default function Estoque() {
                     </CardHeader>
                     <CardContent>
                       <p className="text-sm text-gray-600">
-                        Preço: <strong>R$ {produto.precoPorKg.toFixed(2)}/kg</strong>
+                        Preço:{" "}
+                        <strong>R$ {produto.precoPorKg.toFixed(2)}/kg</strong>
                       </p>
-                      <p className={`text-sm ${isLowStock ? "text-red-600" : "text-gray-600"}`}>
-                        Estoque disponível: <strong>{totalDisponivel.toFixed(2)} kg</strong>
+                      <p
+                        className={`text-sm ${
+                          isLowStock ? "text-red-600" : "text-gray-600"
+                        }`}
+                      >
+                        Estoque disponível:{" "}
+                        <strong>{totalDisponivel.toFixed(2)} kg</strong>
                       </p>
                       <p className="text-xs text-gray-400 mt-1">
                         Total de bags: {bagsDisponiveis.length}
@@ -165,7 +177,9 @@ export default function Estoque() {
 
                 <DialogContent className="max-w-3xl max-h-[600px] overflow-y-auto">
                   <DialogHeader>
-                    <DialogTitle>{produto.nomeProd} - Bags Disponíveis</DialogTitle>
+                    <DialogTitle>
+                      {produto.nomeProd} - Bags Disponíveis
+                    </DialogTitle>
                   </DialogHeader>
 
                   <Table>
@@ -183,17 +197,26 @@ export default function Estoque() {
                         produtoSelecionado.bags
                           .filter(
                             (bag) =>
-                              (bag.status === "disponivel" || bag.status === "reservado") &&
+                              (bag.status === "disponivel" ||
+                                bag.status === "reservado") &&
                               bag.produtoId === produtoSelecionado.id
                           )
                           .map((bag) => (
                             <TableRow key={bag.identificador}>
                               <TableCell>{bag.identificador}</TableCell>
                               <TableCell>{bag.pesoKg.toFixed(2)}</TableCell>
-                              <TableCell>{getStatusBadge(bag.status)}</TableCell>
-                              <TableCell>{new Date(bag.criadoEm).toLocaleDateString()}</TableCell>
                               <TableCell>
-                                <Button variant="outline" size="sm" onClick={() => editarBag(bag)}>
+                                {getStatusBadge(bag.status)}
+                              </TableCell>
+                              <TableCell>
+                                {new Date(bag.criadoEm).toLocaleDateString()}
+                              </TableCell>
+                              <TableCell>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => editarBag(bag)}
+                                >
                                   Editar
                                 </Button>
                               </TableCell>
@@ -204,10 +227,14 @@ export default function Estoque() {
 
                   {bagEditando && (
                     <div className="mt-6 space-y-4 border-t pt-4">
-                      <h3 className="font-semibold text-gray-700">Editando Bag: {bagEditando.id}</h3>
+                      <h3 className="font-semibold text-gray-700">
+                        Editando Bag: {bagEditando.id}
+                      </h3>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="text-sm text-gray-600">Peso (kg)</label>
+                          <label className="text-sm text-gray-600">
+                            Peso (kg)
+                          </label>
                           <Input
                             type="number"
                             value={pesoEdit}
@@ -215,10 +242,14 @@ export default function Estoque() {
                           />
                         </div>
                         <div>
-                          <label className="text-sm text-gray-600">Status</label>
+                          <label className="text-sm text-gray-600">
+                            Status
+                          </label>
                           <select
                             value={statusEdit}
-                            onChange={(e) => setStatusEdit(e.target.value as Bag["status"])}
+                            onChange={(e) =>
+                              setStatusEdit(e.target.value as Bag["status"])
+                            }
                             className="w-full border rounded px-3 py-2 text-sm"
                           >
                             <option value="disponivel">Disponível</option>
@@ -228,7 +259,10 @@ export default function Estoque() {
                         </div>
                       </div>
                       <div className="flex justify-end gap-2">
-                        <Button variant="ghost" onClick={() => setBagEditando(null)}>
+                        <Button
+                          variant="ghost"
+                          onClick={() => setBagEditando(null)}
+                        >
                           Cancelar
                         </Button>
                         <Button onClick={salvarBag}>Salvar</Button>
@@ -247,8 +281,13 @@ export default function Estoque() {
         <h2 className="text-2xl font-semibold mt-10 mb-4">Bags Vendidas</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {produtosVendidos.map((produto) => {
-            const bagsVendidas = produto.bags.filter((b) => b.status === "vendido");
-            const totalVendido = bagsVendidas.reduce((acc, b) => acc + b.pesoKg, 0);
+            const bagsVendidas = produto.bags.filter(
+              (b) => b.status === "vendido"
+            );
+            const totalVendido = -bagsVendidas.reduce(
+              (acc, b) => acc + b.pesoKg,
+              0
+            );
 
             return (
               <Dialog key={produto.id}>
@@ -262,10 +301,12 @@ export default function Estoque() {
                     </CardHeader>
                     <CardContent>
                       <p className="text-sm text-gray-600">
-                        Preço: <strong>R$ {produto.precoPorKg.toFixed(2)}/kg</strong>
+                        Preço:{" "}
+                        <strong>R$ {produto.precoPorKg.toFixed(2)}/kg</strong>
                       </p>
                       <p className="text-sm text-gray-600">
-                        Total vendido: <strong>{totalVendido.toFixed(2)} kg</strong>
+                        Total vendido:{" "}
+                        <strong>{totalVendido.toFixed(2)} kg</strong>
                       </p>
                       <p className="text-xs text-gray-400 mt-1">
                         Total de bags: {bagsVendidas.length}
@@ -276,7 +317,9 @@ export default function Estoque() {
 
                 <DialogContent className="max-w-3xl max-h-[600px] overflow-y-auto">
                   <DialogHeader>
-                    <DialogTitle>{produto.nomeProd} - Bags Vendidas</DialogTitle>
+                    <DialogTitle>
+                      {produto.nomeProd} - Bags Vendidas
+                    </DialogTitle>
                   </DialogHeader>
 
                   <Table>
@@ -292,15 +335,27 @@ export default function Estoque() {
                     <TableBody>
                       {produtoSelecionado &&
                         produtoSelecionado.bags
-                          .filter((bag) => bag.status === "vendido" && bag.produtoId === produtoSelecionado.id)
+                          .filter(
+                            (bag) =>
+                              bag.status === "vendido" &&
+                              bag.produtoId === produtoSelecionado.id
+                          )
                           .map((bag) => (
                             <TableRow key={bag.identificador}>
                               <TableCell>{bag.identificador}</TableCell>
                               <TableCell>{bag.pesoKg.toFixed(2)}</TableCell>
-                              <TableCell>{getStatusBadge(bag.status)}</TableCell>
-                              <TableCell>{new Date(bag.criadoEm).toLocaleDateString()}</TableCell>
                               <TableCell>
-                                <Button variant="outline" size="sm" onClick={() => editarBag(bag)}>
+                                {getStatusBadge(bag.status)}
+                              </TableCell>
+                              <TableCell>
+                                {new Date(bag.criadoEm).toLocaleDateString()}
+                              </TableCell>
+                              <TableCell>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => editarBag(bag)}
+                                >
                                   Editar
                                 </Button>
                               </TableCell>
@@ -311,10 +366,14 @@ export default function Estoque() {
 
                   {bagEditando && (
                     <div className="mt-6 space-y-4 border-t pt-4">
-                      <h3 className="font-semibold text-gray-700">Editando Bag: {bagEditando.id}</h3>
+                      <h3 className="font-semibold text-gray-700">
+                        Editando Bag: {bagEditando.id}
+                      </h3>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="text-sm text-gray-600">Peso (kg)</label>
+                          <label className="text-sm text-gray-600">
+                            Peso (kg)
+                          </label>
                           <Input
                             type="number"
                             value={pesoEdit}
@@ -322,10 +381,14 @@ export default function Estoque() {
                           />
                         </div>
                         <div>
-                          <label className="text-sm text-gray-600">Status</label>
+                          <label className="text-sm text-gray-600">
+                            Status
+                          </label>
                           <select
                             value={statusEdit}
-                            onChange={(e) => setStatusEdit(e.target.value as Bag["status"])}
+                            onChange={(e) =>
+                              setStatusEdit(e.target.value as Bag["status"])
+                            }
                             className="w-full border rounded px-3 py-2 text-sm"
                           >
                             <option value="disponivel">Disponível</option>
@@ -335,7 +398,10 @@ export default function Estoque() {
                         </div>
                       </div>
                       <div className="flex justify-end gap-2">
-                        <Button variant="ghost" onClick={() => setBagEditando(null)}>
+                        <Button
+                          variant="ghost"
+                          onClick={() => setBagEditando(null)}
+                        >
                           Cancelar
                         </Button>
                         <Button onClick={salvarBag}>Salvar</Button>

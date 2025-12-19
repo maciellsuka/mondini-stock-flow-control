@@ -271,7 +271,7 @@ export default function Dashboard() {
           bags: lista,
           subtotal: formatarMoedaBR(item.subtotal) || 0,
           status: pedido.status,
-          totalPedido: formatarMoedaBR(pedido.total),
+          // totalPedido: formatarMoedaBR(pedido.total),
         });
       });
     });
@@ -433,7 +433,10 @@ export default function Dashboard() {
             <BarChart data={faturamentoPorMes} margin={{ top: 32 }}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="mes" />
-              <YAxis tickFormatter={(v) => `R$ ${v.toLocaleString("pt-BR")}`} />
+              <YAxis
+                width={100}
+                tickFormatter={(v) => `R$ ${v.toLocaleString("pt-BR")}`}
+              />
               <Tooltip
                 formatter={(v: number) => `R$ ${v.toLocaleString("pt-BR")}`}
               />
