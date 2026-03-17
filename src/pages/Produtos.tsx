@@ -22,9 +22,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Search, Trash2, Edit } from "lucide-react";
+import { Search, Trash2, Edit, Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-
 import { jsPDF } from "jspdf";
 
 interface ProdutoComBags extends ProdutoModel {
@@ -56,10 +55,15 @@ export default function Produtos() {
   const [editProduto, setEditProduto] = useState<ProdutoComBags | null>(null);
   const [editingBags, setEditingBags] = useState<Bag[]>([]);
 
-  const [etiquetaSelecionada, setEtiquetaSelecionada] = useState<EtiquetaBagProps | null>(null);
+  const [etiquetaSelecionada, setEtiquetaSelecionada] =
+    useState<EtiquetaBagProps | null>(null);
 
-  // Função atualizada e estilizada para gerar etiqueta PDF
-  function gerarEtiquetaPDF({ identificador, descricao, pesoKg, data }: EtiquetaBagProps) {
+  function gerarEtiquetaPDF({
+    identificador,
+    descricao,
+    pesoKg,
+    data,
+  }: EtiquetaBagProps) {
     const doc = new jsPDF({
       orientation: "landscape",
       unit: "mm",
@@ -68,52 +72,45 @@ export default function Produtos() {
 
     const dataFormatada = data.toLocaleDateString("pt-BR");
 
-    // Fundo clarinho
     doc.setFillColor(245, 245, 245);
     doc.rect(0, 0, 100, 50, "F");
 
-    // Logo ou título top centralizado
     doc.setFontSize(16);
     doc.setFont("helvetica", "bold");
     doc.setTextColor("#333");
     doc.text("MONDINI", 50, 10, { align: "center" });
 
-    // Linha separadora
     doc.setDrawColor("#999");
     doc.setLineWidth(0.3);
     doc.line(10, 13, 90, 13);
 
-    // Descrição (mais destaque)
-    doc.setFontSize(24);  
+    doc.setFontSize(24);
     doc.setFont("helvetica", "normal");
     doc.setTextColor("#222");
     const descricaoLines = doc.splitTextToSize(descricao, 80);
-    doc.text(descricaoLines, 50, 25, {align: "center"});
+    doc.text(descricaoLines, 50, 25, { align: "center" });
 
-    // Peso KG
     doc.setFontSize(26);
     doc.setFont("helvetica", "bold");
     doc.setTextColor("#007700");
-    doc.text(`Peso: ${pesoKg.toFixed(2).replace(".", ",")} KG`, 50, 37, { align: "center" });
+    doc.text(`Peso: ${pesoKg.toFixed(2).replace(".", ",")} KG`, 50, 37, {
+      align: "center",
+    });
 
-    // Número da Bag
     doc.setFontSize(14);
-    doc.setFont("helvetica", "italic", "bold");
+    doc.setFont("helvetica", "italic");
     doc.setTextColor("#555");
     doc.text(`Nº da Bag: ${identificador}`, 10, 45);
 
-    // Data gerada no canto direito
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
     doc.setTextColor("#555");
     doc.text(`Data: ${dataFormatada}`, 90, 45, { align: "right" });
 
-    // Opcional: borda arredondada
     doc.setDrawColor("#007700");
     doc.setLineWidth(1);
     doc.roundedRect(1, 1, 98, 48, 3, 3);
 
-    // Gera e abre em nova aba
     window.open(doc.output("bloburl"));
   }
 
@@ -124,7 +121,10 @@ export default function Produtos() {
 
       for (const docSnap of snapshot.docs) {
         const produto = docSnap.data() as ProdutoModel;
-        const bagsSnap = await getDocs(collection(db, `produtos/${docSnap.id}/bags`));
+        const bagsSnap = await getDocs(
+          collection(db, `produtos/${docSnap.id}/bags`),
+        );
+
         const bags: Bag[] = bagsSnap.docs.map((b) => ({
           ...(b.data() as Omit<Bag, "criadoEm">),
           id: b.id,
@@ -134,10 +134,14 @@ export default function Produtos() {
           status: b.data().status || "disponivel",
           pesoKg: b.data().pesoKg || 0,
         }));
-        
-        const bagsVisiveis = bags.filter((b) => b.status !== "vendido");
-        produtosData.push({ ...produto, id: docSnap.id, bags: bagsVisiveis });
 
+        const bagsVisiveis = bags.filter((b) => b.status !== "vendido");
+
+        produtosData.push({
+          ...produto,
+          id: docSnap.id,
+          bags: bagsVisiveis,
+        });
       }
 
       setProdutos(produtosData);
@@ -162,7 +166,10 @@ export default function Produtos() {
 
   const handleAdicionarProduto = async () => {
     if (!novoProduto.nomeProd.trim() || novoProduto.precoPorKg <= 0) {
-      toast({ title: "Preencha o nome e o preço corretamente", variant: "destructive" });
+      toast({
+        title: "Preencha o nome e o preço corretamente",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -170,7 +177,12 @@ export default function Produtos() {
       await addDoc(collection(db, "produtos"), novoProduto);
       toast({ title: "Produto criado com sucesso" });
       setIsDialogOpen(false);
-      setNovoProduto({ nomeProd: "", tipo: "moído", precoPorKg: 0, descricao: "" });
+      setNovoProduto({
+        nomeProd: "",
+        tipo: "moído",
+        precoPorKg: 0,
+        descricao: "",
+      });
       fetchProdutos();
     } catch {
       toast({ title: "Erro ao criar produto", variant: "destructive" });
@@ -201,10 +213,8 @@ export default function Produtos() {
 
       await Promise.all(
         editingBags.map(async (bag) => {
-          const bagRef = doc(db, "produtos", editProduto.id, "bags", bag.id);
-
           const dataToSave = {
-            pesoKg: bag.pesoKg,
+            pesoKg: Number(bag.pesoKg) || 0,
             status: bag.status,
             criadoEm:
               bag.criadoEm instanceof Date
@@ -215,38 +225,78 @@ export default function Produtos() {
           };
 
           if (!bag.id || bag.id.startsWith("temp-") || bag.id.length < 5) {
-            await addDoc(collection(db, "produtos", editProduto.id, "bags"), dataToSave);
+            await addDoc(
+              collection(db, "produtos", editProduto.id, "bags"),
+              dataToSave,
+            );
           } else {
+            const bagRef = doc(db, "produtos", editProduto.id, "bags", bag.id);
             await updateDoc(bagRef, dataToSave);
           }
-        })
+        }),
       );
 
       toast({ title: "Produto atualizado com sucesso" });
       setIsEditDialogOpen(false);
       setEditProduto(null);
+      setEditingBags([]);
       fetchProdutos();
     } catch {
       toast({ title: "Erro ao atualizar produto", variant: "destructive" });
     }
   };
 
-  const updateBagField = (id: string, field: keyof Omit<Bag, "id">, value: any) => {
+  const updateBagField = (
+    id: string,
+    field: keyof Omit<Bag, "id">,
+    value: any,
+  ) => {
     setEditingBags((prev) =>
-      prev.map((bag) => (bag.id === id ? { ...bag, [field]: value } : bag))
+      prev.map((bag) => (bag.id === id ? { ...bag, [field]: value } : bag)),
     );
+  };
+
+  const getUltimaBagCriada = (bags: Bag[]) => {
+    if (!bags.length) return null;
+
+    return [...bags].sort((a, b) => {
+      const dataA =
+        a.criadoEm instanceof Date
+          ? a.criadoEm.getTime()
+          : new Date(a.criadoEm).getTime();
+      const dataB =
+        b.criadoEm instanceof Date
+          ? b.criadoEm.getTime()
+          : new Date(b.criadoEm).getTime();
+
+      return dataB - dataA;
+    })[0];
+  };
+
+  const getProximoIdentificador = (bags: Bag[]) => {
+    const identificadoresNumericos = bags
+      .map((bag) => Number(bag.identificador))
+      .filter((num) => !Number.isNaN(num));
+
+    if (!identificadoresNumericos.length) return "1";
+
+    return String(Math.max(...identificadoresNumericos) + 1);
   };
 
   const handleAddBag = () => {
     if (!editProduto) return;
+
+    const proximoIdentificador = getProximoIdentificador(editingBags);
+
     const novaBag: Bag = {
       id: `temp-${Date.now()}`,
       pesoKg: 0,
       status: "disponivel",
       criadoEm: new Date(),
       produtoId: editProduto.id,
-      identificador: "",
+      identificador: proximoIdentificador,
     };
+
     setEditingBags((prev) => [...prev, novaBag]);
   };
 
@@ -267,11 +317,14 @@ export default function Produtos() {
   const produtosFiltrados = produtos.filter(
     (p) =>
       p.nomeProd.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.descricao?.toLowerCase().includes(searchTerm.toLowerCase())
+      p.descricao?.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   const calcularEstoqueTotal = (bags: Bag[]) =>
-    bags.reduce((acc, bag) => (bag.status === "disponivel" ? acc + bag.pesoKg : acc), 0);
+    bags.reduce(
+      (acc, bag) => (bag.status === "disponivel" ? acc + bag.pesoKg : acc),
+      0,
+    );
 
   const statusColors: Record<Bag["status"], string> = {
     disponivel: "bg-green-200 text-green-800",
@@ -279,10 +332,14 @@ export default function Produtos() {
     vendido: "bg-yellow-300 text-yellow-900",
   };
 
+  const ultimaBagCriada = getUltimaBagCriada(editingBags);
+  const proximoIdentificador = getProximoIdentificador(editingBags);
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">Produtos</h1>
+
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
             <Button>Novo Produto</Button>
@@ -291,6 +348,7 @@ export default function Produtos() {
             <DialogHeader>
               <DialogTitle>Novo Produto</DialogTitle>
             </DialogHeader>
+
             <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto">
               <div className="space-y-2">
                 <Label htmlFor="nome">Nome</Label>
@@ -302,6 +360,7 @@ export default function Produtos() {
                   }
                 />
               </div>
+
               <div className="space-y-2">
                 <Label htmlFor="descricao">Descrição</Label>
                 <Input
@@ -312,6 +371,7 @@ export default function Produtos() {
                   }
                 />
               </div>
+
               <div className="space-y-2">
                 <Label htmlFor="tipo">Tipo</Label>
                 <select
@@ -330,6 +390,7 @@ export default function Produtos() {
                   <option value="outro">Outro</option>
                 </select>
               </div>
+
               <div className="space-y-2">
                 <Label htmlFor="preco">Preço por KG</Label>
                 <Input
@@ -340,12 +401,13 @@ export default function Produtos() {
                   onChange={(e) =>
                     setNovoProduto((p) => ({
                       ...p,
-                      precoPorKg: parseFloat(e.target.value),
+                      precoPorKg: parseFloat(e.target.value) || 0,
                     }))
                   }
                 />
               </div>
             </div>
+
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
                 Cancelar
@@ -356,7 +418,6 @@ export default function Produtos() {
         </Dialog>
       </div>
 
-      {/* Busca */}
       <div className="relative max-w-md">
         <Search className="absolute left-2 top-2.5 w-4 h-4 text-muted-foreground" />
         <Input
@@ -367,10 +428,10 @@ export default function Produtos() {
         />
       </div>
 
-      {/* Lista de produtos */}
       <div className="grid gap-4">
         {produtosFiltrados.map((produto) => {
           const estoqueTotal = calcularEstoqueTotal(produto.bags);
+
           return (
             <Card
               key={produto.id}
@@ -380,7 +441,9 @@ export default function Produtos() {
                 <div className="flex justify-between">
                   <div>
                     <h2 className="text-xl font-bold">{produto.nomeProd}</h2>
-                    <p className="text-sm text-muted-foreground">{produto.descricao}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {produto.descricao}
+                    </p>
                     <p className="text-sm mt-2">
                       Tipo: <strong>{produto.tipo}</strong>
                       <br />
@@ -393,6 +456,7 @@ export default function Produtos() {
                       <strong>{estoqueTotal.toFixed(2)} KG</strong>
                     </p>
                   </div>
+
                   <div className="flex gap-2 items-start">
                     <Button
                       variant="outline"
@@ -413,7 +477,9 @@ export default function Produtos() {
 
                 {produto.bags.length > 0 && (
                   <div className="mt-4">
-                    <p className="text-sm font-medium mb-2">Bags disponíveis:</p>
+                    <p className="text-sm font-medium mb-2">
+                      Bags disponíveis:
+                    </p>
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       {produto.bags.map((bag) => (
                         <div
@@ -422,9 +488,9 @@ export default function Produtos() {
                             statusColors[bag.status]
                           }`}
                         >
-                          <span className="font-semibold">{`Bag: ${
-                            bag.identificador || bag.id
-                          }`}</span>
+                          <span className="font-semibold">
+                            {`Bag: ${bag.identificador || bag.id}`}
+                          </span>
                           <span>
                             {bag.pesoKg.toFixed(2)} KG -{" "}
                             <span className="capitalize">{bag.status}</span>
@@ -435,7 +501,8 @@ export default function Produtos() {
                             onClick={() =>
                               setEtiquetaSelecionada({
                                 identificador: bag.identificador || bag.id,
-                                descricao: produto.descricao || produto.nomeProd,
+                                descricao:
+                                  produto.descricao || produto.nomeProd,
                                 pesoKg: bag.pesoKg,
                                 data: new Date(),
                               })
@@ -455,12 +522,12 @@ export default function Produtos() {
         })}
       </div>
 
-      {/* Modal edição */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle>Editar Produto</DialogTitle>
           </DialogHeader>
+
           {editProduto && (
             <div className="space-y-4 max-h-[70vh] overflow-y-auto">
               <div className="space-y-2">
@@ -472,15 +539,20 @@ export default function Produtos() {
                   }
                 />
               </div>
+
               <div className="space-y-2">
                 <Label>Descrição</Label>
                 <Input
                   value={editProduto.descricao}
                   onChange={(e) =>
-                    setEditProduto({ ...editProduto, descricao: e.target.value })
+                    setEditProduto({
+                      ...editProduto,
+                      descricao: e.target.value,
+                    })
                   }
                 />
               </div>
+
               <div className="space-y-2">
                 <Label>Tipo</Label>
                 <select
@@ -498,6 +570,7 @@ export default function Produtos() {
                   <option value="outro">Outro</option>
                 </select>
               </div>
+
               <div className="space-y-2">
                 <Label>Preço por KG</Label>
                 <Input
@@ -507,64 +580,145 @@ export default function Produtos() {
                   onChange={(e) =>
                     setEditProduto({
                       ...editProduto,
-                      precoPorKg: parseFloat(e.target.value),
+                      precoPorKg: parseFloat(e.target.value) || 0,
                     })
                   }
                 />
               </div>
 
-              <div className="space-y-2 mt-4">
+              <div className="space-y-3 mt-4">
                 <Label>Bags</Label>
-                {editingBags.map((bag, index) => (
-                  <div
-                    key={bag.id || index}
-                    className={`flex gap-2 items-center ${statusColors[bag.status]} rounded p-2`}
-                  >
-                    <Input
-                      placeholder="Nº"
-                      value={bag.identificador || ""}
-                      onChange={(e) =>
-                        updateBagField(bag.id, "identificador", e.target.value)
-                      }
-                      className="w-24"
-                    />
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min={0}
-                      value={bag.pesoKg}
-                      onChange={(e) =>
-                        updateBagField(bag.id, "pesoKg", parseFloat(e.target.value))
-                      }
-                      className="flex-1"
-                    />
-                    <select
-                      value={bag.status}
-                      onChange={(e) =>
-                        updateBagField(bag.id, "status", e.target.value as Bag["status"])
-                      }
-                      className="border rounded px-2 py-1"
-                    >
-                      <option value="disponivel">Disponível</option>
-                      <option value="reservado">Reservado</option>
-                      <option value="vendido">Vendido</option>
-                    </select>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleRemoveBag(bag.id)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+
+                {ultimaBagCriada && (
+                  <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm">
+                    <p className="font-semibold text-blue-900">
+                      Última bag criada
+                    </p>
+                    <div className="mt-1 text-blue-800">
+                      <p>
+                        <strong>Nº:</strong>{" "}
+                        {ultimaBagCriada.identificador || ultimaBagCriada.id}
+                      </p>
+                      <p>
+                        <strong>Peso:</strong>{" "}
+                        {ultimaBagCriada.pesoKg.toFixed(2).replace(".", ",")} KG
+                      </p>
+                      <p>
+                        <strong>Data:</strong>{" "}
+                        {ultimaBagCriada.criadoEm instanceof Date
+                          ? ultimaBagCriada.criadoEm.toLocaleDateString("pt-BR")
+                          : new Date(
+                              ultimaBagCriada.criadoEm,
+                            ).toLocaleDateString("pt-BR")}
+                      </p>
+                    </div>
                   </div>
-                ))}
-                <Button variant="outline" size="sm" onClick={handleAddBag}>
+                )}
+
+                <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-3 text-sm">
+                  <p className="font-medium text-gray-800">
+                    Próxima bag sugerida
+                  </p>
+                  <p className="text-gray-600 mt-1">
+                    Identificador sugerido:{" "}
+                    <strong>{proximoIdentificador}</strong>
+                  </p>
+                </div>
+
+                {editingBags.map((bag, index) => {
+                  const isNovaBag = bag.id.startsWith("temp-");
+
+                  return (
+                    <div
+                      key={bag.id || index}
+                      className={`flex gap-2 items-center rounded p-2 border ${
+                        isNovaBag
+                          ? "border-blue-400 bg-blue-50"
+                          : statusColors[bag.status]
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Input
+                          placeholder="Nº"
+                          value={bag.identificador || ""}
+                          onChange={(e) =>
+                            updateBagField(
+                              bag.id,
+                              "identificador",
+                              e.target.value,
+                            )
+                          }
+                          className="w-24 bg-white"
+                        />
+                        {isNovaBag && (
+                          <span className="text-[10px] font-semibold uppercase px-2 py-1 rounded bg-blue-600 text-white">
+                            Nova
+                          </span>
+                        )}
+                      </div>
+
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min={0}
+                        value={bag.pesoKg}
+                        onChange={(e) =>
+                          updateBagField(
+                            bag.id,
+                            "pesoKg",
+                            parseFloat(e.target.value) || 0,
+                          )
+                        }
+                        className="flex-1 bg-white"
+                      />
+
+                      <select
+                        value={bag.status}
+                        onChange={(e) =>
+                          updateBagField(
+                            bag.id,
+                            "status",
+                            e.target.value as Bag["status"],
+                          )
+                        }
+                        className="border rounded px-2 py-1 bg-white"
+                      >
+                        <option value="disponivel">Disponível</option>
+                        <option value="reservado">Reservado</option>
+                        <option value="vendido">Vendido</option>
+                      </select>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleRemoveBag(bag.id)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  );
+                })}
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAddBag}
+                  className="w-fit"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
                   Adicionar Bag
                 </Button>
               </div>
 
               <DialogFooter>
-                <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsEditDialogOpen(false);
+                    setEditProduto(null);
+                    setEditingBags([]);
+                  }}
+                >
                   Cancelar
                 </Button>
                 <Button onClick={handleUpdateProduto}>Salvar</Button>
@@ -574,25 +728,44 @@ export default function Produtos() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal Etiqueta */}
-      <Dialog open={!!etiquetaSelecionada} onOpenChange={() => setEtiquetaSelecionada(null)}>
+      <Dialog
+        open={!!etiquetaSelecionada}
+        onOpenChange={() => setEtiquetaSelecionada(null)}
+      >
         <DialogContent>
           {etiquetaSelecionada && (
             <>
-            <p>Gerador de Etiquetas</p>
+              <p>Gerador de Etiquetas</p>
               <div className="p-4 border rounded mb-4 bg-gray-50">
-                <p><strong>Descrição:</strong> {etiquetaSelecionada.descricao}</p>
-                <p><strong>Peso:</strong> {etiquetaSelecionada.pesoKg.toFixed(2).replace(".", ",")} KG</p>
-                <p><strong>Nº Bag:</strong> {etiquetaSelecionada.identificador}</p>
-                <p><strong>Data:</strong> {etiquetaSelecionada.data.toLocaleDateString("pt-BR")}</p>
+                <p>
+                  <strong>Descrição:</strong> {etiquetaSelecionada.descricao}
+                </p>
+                <p>
+                  <strong>Peso:</strong>{" "}
+                  {etiquetaSelecionada.pesoKg.toFixed(2).replace(".", ",")} KG
+                </p>
+                <p>
+                  <strong>Nº Bag:</strong> {etiquetaSelecionada.identificador}
+                </p>
+                <p>
+                  <strong>Data:</strong>{" "}
+                  {etiquetaSelecionada.data.toLocaleDateString("pt-BR")}
+                </p>
               </div>
               <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setEtiquetaSelecionada(null)}>
+                <Button
+                  variant="outline"
+                  onClick={() => setEtiquetaSelecionada(null)}
+                >
                   Fechar
                 </Button>
-                <Button onClick={() => {
-                  if (etiquetaSelecionada) gerarEtiquetaPDF(etiquetaSelecionada);
-                }}>
+                <Button
+                  onClick={() => {
+                    if (etiquetaSelecionada) {
+                      gerarEtiquetaPDF(etiquetaSelecionada);
+                    }
+                  }}
+                >
                   Imprimir
                 </Button>
               </div>

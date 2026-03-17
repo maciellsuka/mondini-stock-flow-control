@@ -27,10 +27,11 @@ export default function Estoque() {
   const [produtos, setProdutos] = useState<ProdutoComBags[]>([]);
   const [produtoSelecionado, setProdutoSelecionado] =
     useState<ProdutoComBags | null>(null);
-  const [mostrarVendidas, setMostrarVendidas] = useState(false); // indica se modal mostra vendido ou disponível
+  const [mostrarVendidas, setMostrarVendidas] = useState(false);
   const [bagEditando, setBagEditando] = useState<Bag | null>(null);
   const [pesoEdit, setPesoEdit] = useState("");
   const [statusEdit, setStatusEdit] = useState<Bag["status"]>("disponivel");
+  const [editBagDialogOpen, setEditBagDialogOpen] = useState(false);
 
   const fetchProdutosComBags = async () => {
     const produtosCol = collection(db, "produtos");
@@ -41,13 +42,14 @@ export default function Estoque() {
       const data = docSnap.data();
       const bagsCol = collection(db, `produtos/${docSnap.id}/bags`);
       const bagsSnap = await getDocs(bagsCol);
+
       const bags: Bag[] = bagsSnap.docs.map((bagDoc) => ({
         id: bagDoc.id,
         produtoId: docSnap.id,
-        identificador: bagDoc.data().identificador,
-        pesoKg: bagDoc.data().pesoKg,
-        status: bagDoc.data().status,
-        criadoEm: bagDoc.data().criadoEm?.toDate() ?? new Date(),
+        identificador: bagDoc.data().identificador || "",
+        pesoKg: bagDoc.data().pesoKg || 0,
+        status: bagDoc.data().status || "disponivel",
+        criadoEm: bagDoc.data().criadoEm?.toDate?.() ?? new Date(),
       }));
 
       produtosData.push({
@@ -56,6 +58,7 @@ export default function Estoque() {
         precoPorKg: data.precoPorKg,
         bags,
         tipo: data.tipo,
+        descricao: data.descricao || "",
       });
     }
 
@@ -78,48 +81,120 @@ export default function Estoque() {
         );
       case "vendido":
         return <Badge className="bg-red-100 text-red-800">Vendido</Badge>;
+      default:
+        return <Badge>Status desconhecido</Badge>;
     }
+  };
+
+  const getUltimaBagCriada = (bags: Bag[]) => {
+    if (!bags.length) return null;
+
+    return [...bags].sort((a, b) => {
+      const dataA =
+        a.criadoEm instanceof Date
+          ? a.criadoEm.getTime()
+          : new Date(a.criadoEm).getTime();
+
+      const dataB =
+        b.criadoEm instanceof Date
+          ? b.criadoEm.getTime()
+          : new Date(b.criadoEm).getTime();
+
+      return dataB - dataA;
+    })[0];
   };
 
   const editarBag = (bag: Bag) => {
     setBagEditando(bag);
     setPesoEdit(bag.pesoKg.toString());
     setStatusEdit(bag.status);
+    setEditBagDialogOpen(true);
   };
 
   const salvarBag = async () => {
     if (!bagEditando || !produtoSelecionado) return;
+
+    const peso = parseFloat(pesoEdit);
+
+    if (isNaN(peso) || peso <= 0) return;
+
     const ref = doc(
       db,
       "produtos",
       bagEditando.produtoId,
       "bags",
-      bagEditando.id
+      bagEditando.id,
     );
+
     await updateDoc(ref, {
-      pesoKg: parseFloat(pesoEdit),
+      pesoKg: peso,
       status: statusEdit,
     });
+
     await fetchProdutosComBags();
+
+    const produtosAtualizadosSnapshot = await getDocs(
+      collection(db, "produtos"),
+    );
+    const produtosAtualizados: ProdutoComBags[] = [];
+
+    for (const docSnap of produtosAtualizadosSnapshot.docs) {
+      const data = docSnap.data();
+      const bagsCol = collection(db, `produtos/${docSnap.id}/bags`);
+      const bagsSnap = await getDocs(bagsCol);
+
+      const bags: Bag[] = bagsSnap.docs.map((bagDoc) => ({
+        id: bagDoc.id,
+        produtoId: docSnap.id,
+        identificador: bagDoc.data().identificador || "",
+        pesoKg: bagDoc.data().pesoKg || 0,
+        status: bagDoc.data().status || "disponivel",
+        criadoEm: bagDoc.data().criadoEm?.toDate?.() ?? new Date(),
+      }));
+
+      produtosAtualizados.push({
+        id: docSnap.id,
+        nomeProd: data.nomeProd,
+        precoPorKg: data.precoPorKg,
+        bags,
+        tipo: data.tipo,
+        descricao: data.descricao || "",
+      });
+    }
+
+    const produtoAtualizado =
+      produtosAtualizados.find((p) => p.id === produtoSelecionado.id) || null;
+
+    setProdutos(produtosAtualizados);
+    setProdutoSelecionado(produtoAtualizado);
     setBagEditando(null);
+    setEditBagDialogOpen(false);
   };
 
-  // Função para abrir modal com filtro de bags por status
   const abrirModal = (produto: ProdutoComBags, vendido: boolean) => {
     setProdutoSelecionado(produto);
     setMostrarVendidas(vendido);
     setBagEditando(null);
   };
 
-  // Filtra produtos com bags disponíveis (disponivel ou reservado)
   const produtosDisponiveis = produtos.filter((p) =>
-    p.bags.some((b) => b.status === "disponivel" || b.status === "reservado")
+    p.bags.some((b) => b.status === "disponivel" || b.status === "reservado"),
   );
 
-  // Filtra produtos com bags vendidas
   const produtosVendidos = produtos.filter((p) =>
-    p.bags.some((b) => b.status === "vendido")
+    p.bags.some((b) => b.status === "vendido"),
   );
+
+  const bagsFiltradas =
+    produtoSelecionado?.bags.filter((bag) =>
+      mostrarVendidas
+        ? bag.status === "vendido"
+        : bag.status === "disponivel" || bag.status === "reservado",
+    ) || [];
+
+  const ultimaBagProdutoSelecionado = produtoSelecionado
+    ? getUltimaBagCriada(produtoSelecionado.bags)
+    : null;
 
   return (
     <div className="p-6 space-y-8">
@@ -128,20 +203,21 @@ export default function Estoque() {
         Visualize os produtos e suas bags em estoque
       </p>
 
-      {/* Estoque Disponível */}
       <section>
         <h2 className="text-2xl font-semibold mb-4">Estoque Disponível</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {produtosDisponiveis.map((produto) => {
             const bagsDisponiveis = produto.bags.filter(
-              (b) => b.status === "disponivel" || b.status === "reservado"
+              (b) => b.status === "disponivel" || b.status === "reservado",
             );
+
             const totalDisponivel = bagsDisponiveis.reduce(
               (acc, b) => acc + b.pesoKg,
-              0
+              0,
             );
 
             const isLowStock = totalDisponivel < 10;
+            const ultimaBagCriada = getUltimaBagCriada(produto.bags);
 
             return (
               <Dialog key={produto.id}>
@@ -171,6 +247,29 @@ export default function Estoque() {
                       <p className="text-xs text-gray-400 mt-1">
                         Total de bags: {bagsDisponiveis.length}
                       </p>
+
+                      {ultimaBagCriada && (
+                        <div className="mt-3 rounded-md border bg-gray-50 p-3 text-sm">
+                          <p className="font-medium text-gray-800">
+                            Última bag criada
+                          </p>
+                          <p className="text-gray-600">
+                            <strong>Nº:</strong>{" "}
+                            {ultimaBagCriada.identificador ||
+                              ultimaBagCriada.id}
+                          </p>
+                          <p className="text-gray-600">
+                            <strong>Peso:</strong>{" "}
+                            {ultimaBagCriada.pesoKg.toFixed(2)} kg
+                          </p>
+                          <p className="text-gray-600">
+                            <strong>Data:</strong>{" "}
+                            {new Date(
+                              ultimaBagCriada.criadoEm,
+                            ).toLocaleDateString("pt-BR")}
+                          </p>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 </DialogTrigger>
@@ -178,9 +277,32 @@ export default function Estoque() {
                 <DialogContent className="max-w-3xl max-h-[600px] overflow-y-auto">
                   <DialogHeader>
                     <DialogTitle>
-                      {produto.nomeProd} - Bags Disponíveis
+                      {produtoSelecionado?.nomeProd} - Bags Disponíveis
                     </DialogTitle>
                   </DialogHeader>
+
+                  {produtoSelecionado &&
+                    !mostrarVendidas &&
+                    ultimaBagProdutoSelecionado && (
+                      <div className="rounded-md border bg-muted/40 p-4 text-sm">
+                        <p className="font-semibold mb-2">Última bag criada</p>
+                        <p>
+                          <strong>Nº:</strong>{" "}
+                          {ultimaBagProdutoSelecionado.identificador ||
+                            ultimaBagProdutoSelecionado.id}
+                        </p>
+                        <p>
+                          <strong>Peso:</strong>{" "}
+                          {ultimaBagProdutoSelecionado.pesoKg.toFixed(2)} kg
+                        </p>
+                        <p>
+                          <strong>Data:</strong>{" "}
+                          {new Date(
+                            ultimaBagProdutoSelecionado.criadoEm,
+                          ).toLocaleDateString("pt-BR")}
+                        </p>
+                      </div>
+                    )}
 
                   <Table>
                     <TableHeader>
@@ -193,82 +315,27 @@ export default function Estoque() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {produtoSelecionado &&
-                        produtoSelecionado.bags
-                          .filter(
-                            (bag) =>
-                              (bag.status === "disponivel" ||
-                                bag.status === "reservado") &&
-                              bag.produtoId === produtoSelecionado.id
-                          )
-                          .map((bag) => (
-                            <TableRow key={bag.identificador}>
-                              <TableCell>{bag.identificador}</TableCell>
-                              <TableCell>{bag.pesoKg.toFixed(2)}</TableCell>
-                              <TableCell>
-                                {getStatusBadge(bag.status)}
-                              </TableCell>
-                              <TableCell>
-                                {new Date(bag.criadoEm).toLocaleDateString()}
-                              </TableCell>
-                              <TableCell>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => editarBag(bag)}
-                                >
-                                  Editar
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                          ))}
+                      {bagsFiltradas.map((bag) => (
+                        <TableRow key={bag.id}>
+                          <TableCell>{bag.identificador || bag.id}</TableCell>
+                          <TableCell>{bag.pesoKg.toFixed(2)}</TableCell>
+                          <TableCell>{getStatusBadge(bag.status)}</TableCell>
+                          <TableCell>
+                            {new Date(bag.criadoEm).toLocaleDateString("pt-BR")}
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => editarBag(bag)}
+                            >
+                              Editar
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
                     </TableBody>
                   </Table>
-
-                  {bagEditando && (
-                    <div className="mt-6 space-y-4 border-t pt-4">
-                      <h3 className="font-semibold text-gray-700">
-                        Editando Bag: {bagEditando.id}
-                      </h3>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="text-sm text-gray-600">
-                            Peso (kg)
-                          </label>
-                          <Input
-                            type="number"
-                            value={pesoEdit}
-                            onChange={(e) => setPesoEdit(e.target.value)}
-                          />
-                        </div>
-                        <div>
-                          <label className="text-sm text-gray-600">
-                            Status
-                          </label>
-                          <select
-                            value={statusEdit}
-                            onChange={(e) =>
-                              setStatusEdit(e.target.value as Bag["status"])
-                            }
-                            className="w-full border rounded px-3 py-2 text-sm"
-                          >
-                            <option value="disponivel">Disponível</option>
-                            <option value="reservado">Reservado</option>
-                            <option value="vendido">Vendido</option>
-                          </select>
-                        </div>
-                      </div>
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          onClick={() => setBagEditando(null)}
-                        >
-                          Cancelar
-                        </Button>
-                        <Button onClick={salvarBag}>Salvar</Button>
-                      </div>
-                    </div>
-                  )}
                 </DialogContent>
               </Dialog>
             );
@@ -276,18 +343,20 @@ export default function Estoque() {
         </div>
       </section>
 
-      {/* Bags Vendidas */}
       <section>
         <h2 className="text-2xl font-semibold mt-10 mb-4">Bags Vendidas</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {produtosVendidos.map((produto) => {
             const bagsVendidas = produto.bags.filter(
-              (b) => b.status === "vendido"
+              (b) => b.status === "vendido",
             );
-            const totalVendido = -bagsVendidas.reduce(
+
+            const totalVendido = bagsVendidas.reduce(
               (acc, b) => acc + b.pesoKg,
-              0
+              0,
             );
+
+            const ultimaBagCriada = getUltimaBagCriada(produto.bags);
 
             return (
               <Dialog key={produto.id}>
@@ -311,6 +380,29 @@ export default function Estoque() {
                       <p className="text-xs text-gray-400 mt-1">
                         Total de bags: {bagsVendidas.length}
                       </p>
+
+                      {ultimaBagCriada && (
+                        <div className="mt-3 rounded-md border bg-gray-50 p-3 text-sm">
+                          <p className="font-medium text-gray-800">
+                            Última bag criada
+                          </p>
+                          <p className="text-gray-600">
+                            <strong>Nº:</strong>{" "}
+                            {ultimaBagCriada.identificador ||
+                              ultimaBagCriada.id}
+                          </p>
+                          <p className="text-gray-600">
+                            <strong>Peso:</strong>{" "}
+                            {ultimaBagCriada.pesoKg.toFixed(2)} kg
+                          </p>
+                          <p className="text-gray-600">
+                            <strong>Data:</strong>{" "}
+                            {new Date(
+                              ultimaBagCriada.criadoEm,
+                            ).toLocaleDateString("pt-BR")}
+                          </p>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 </DialogTrigger>
@@ -318,9 +410,32 @@ export default function Estoque() {
                 <DialogContent className="max-w-3xl max-h-[600px] overflow-y-auto">
                   <DialogHeader>
                     <DialogTitle>
-                      {produto.nomeProd} - Bags Vendidas
+                      {produtoSelecionado?.nomeProd} - Bags Vendidas
                     </DialogTitle>
                   </DialogHeader>
+
+                  {produtoSelecionado &&
+                    mostrarVendidas &&
+                    ultimaBagProdutoSelecionado && (
+                      <div className="rounded-md border bg-muted/40 p-4 text-sm">
+                        <p className="font-semibold mb-2">Última bag criada</p>
+                        <p>
+                          <strong>Nº:</strong>{" "}
+                          {ultimaBagProdutoSelecionado.identificador ||
+                            ultimaBagProdutoSelecionado.id}
+                        </p>
+                        <p>
+                          <strong>Peso:</strong>{" "}
+                          {ultimaBagProdutoSelecionado.pesoKg.toFixed(2)} kg
+                        </p>
+                        <p>
+                          <strong>Data:</strong>{" "}
+                          {new Date(
+                            ultimaBagProdutoSelecionado.criadoEm,
+                          ).toLocaleDateString("pt-BR")}
+                        </p>
+                      </div>
+                    )}
 
                   <Table>
                     <TableHeader>
@@ -333,87 +448,85 @@ export default function Estoque() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {produtoSelecionado &&
-                        produtoSelecionado.bags
-                          .filter(
-                            (bag) =>
-                              bag.status === "vendido" &&
-                              bag.produtoId === produtoSelecionado.id
-                          )
-                          .map((bag) => (
-                            <TableRow key={bag.identificador}>
-                              <TableCell>{bag.identificador}</TableCell>
-                              <TableCell>{bag.pesoKg.toFixed(2)}</TableCell>
-                              <TableCell>
-                                {getStatusBadge(bag.status)}
-                              </TableCell>
-                              <TableCell>
-                                {new Date(bag.criadoEm).toLocaleDateString()}
-                              </TableCell>
-                              <TableCell>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => editarBag(bag)}
-                                >
-                                  Editar
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                          ))}
+                      {bagsFiltradas.map((bag) => (
+                        <TableRow key={bag.id}>
+                          <TableCell>{bag.identificador || bag.id}</TableCell>
+                          <TableCell>{bag.pesoKg.toFixed(2)}</TableCell>
+                          <TableCell>{getStatusBadge(bag.status)}</TableCell>
+                          <TableCell>
+                            {new Date(bag.criadoEm).toLocaleDateString("pt-BR")}
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => editarBag(bag)}
+                            >
+                              Editar
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
                     </TableBody>
                   </Table>
-
-                  {bagEditando && (
-                    <div className="mt-6 space-y-4 border-t pt-4">
-                      <h3 className="font-semibold text-gray-700">
-                        Editando Bag: {bagEditando.id}
-                      </h3>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="text-sm text-gray-600">
-                            Peso (kg)
-                          </label>
-                          <Input
-                            type="number"
-                            value={pesoEdit}
-                            onChange={(e) => setPesoEdit(e.target.value)}
-                          />
-                        </div>
-                        <div>
-                          <label className="text-sm text-gray-600">
-                            Status
-                          </label>
-                          <select
-                            value={statusEdit}
-                            onChange={(e) =>
-                              setStatusEdit(e.target.value as Bag["status"])
-                            }
-                            className="w-full border rounded px-3 py-2 text-sm"
-                          >
-                            <option value="disponivel">Disponível</option>
-                            <option value="reservado">Reservado</option>
-                            <option value="vendido">Vendido</option>
-                          </select>
-                        </div>
-                      </div>
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          onClick={() => setBagEditando(null)}
-                        >
-                          Cancelar
-                        </Button>
-                        <Button onClick={salvarBag}>Salvar</Button>
-                      </div>
-                    </div>
-                  )}
                 </DialogContent>
               </Dialog>
             );
           })}
         </div>
       </section>
+
+      <Dialog open={editBagDialogOpen} onOpenChange={setEditBagDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Editar Bag {bagEditando?.identificador || bagEditando?.id}
+            </DialogTitle>
+          </DialogHeader>
+
+          {bagEditando && (
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm text-gray-600">Peso (kg)</label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={pesoEdit}
+                  onChange={(e) => setPesoEdit(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="text-sm text-gray-600">Status</label>
+                <select
+                  value={statusEdit}
+                  onChange={(e) =>
+                    setStatusEdit(e.target.value as Bag["status"])
+                  }
+                  className="w-full border rounded px-3 py-2 text-sm"
+                >
+                  <option value="disponivel">Disponível</option>
+                  <option value="reservado">Reservado</option>
+                  <option value="vendido">Vendido</option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setBagEditando(null);
+                    setEditBagDialogOpen(false);
+                  }}
+                >
+                  Cancelar
+                </Button>
+                <Button onClick={salvarBag}>Salvar</Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
